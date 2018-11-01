@@ -1,0 +1,15 @@
+[WRONG!]
+3) ANS instability not mapping?  
+	Maybe, but it still has to be correlated over time… in this drifty way.
+
+[WRONG]
+4) why is it not evidence for variation in the (internal,
+   pre-verbal-estimate) perception of magnitude itself?  Could be...
+
+Minor points
+i) In the introduction, the authors cite several papers in support of
+   their argument that in fact measure the mapping from symbolic numbers
+   onto a continuous magnitude space (visuo-spatial number line). This
+   reverses the direction the authors are interested in; because it is
+   unclear whether the mapping function is bidirectionally symmetrical, the
+   authors might use such citations with greater caution.

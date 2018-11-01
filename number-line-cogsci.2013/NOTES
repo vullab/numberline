@@ -1,0 +1,11 @@
+What do we know:
+- number mapping drifts over time
+- drifting over time is slow
+  * quantify!
+- 
+
+Things to add to paper:
+- details of how fitting was done.
+- quantified estimate of drift rate?  how to express?
+- compare drift rate pre and post training in expt 2
+- expt 2?

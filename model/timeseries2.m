@@ -1,0 +1,69 @@
+%% smoothed regression
+% ax+b
+% ak + b = k
+% (a-1)k = -b
+% k = -b/(a-1)  % this is the x value where we diverge from the diagonal
+% alternatively, we can specify the slope and divergence point to get the
+% linear functionm:
+% b = -(a-1)/k
+% bilinear version
+clear all;
+close all;
+
+n = 10000;
+nl = 11;
+sm = 0.01;
+mags = linspace(0,3,0.001);
+nums = linspace(0,3,0.001);
+a = 1.0;
+k = log10(10);
+stimw = 0.25;
+respw = 0.0;
+
+
+fxm = @(m,a,k)((m<=k).*m + (m>k).*(m.*a-(a-1)/k));
+
+
+
+
+stims = round(10.^(rand(n+nl,1).*log10(300)));
+
+%
+% different ways of choosing the slope
+%%%%%%%%%%%%
+% random on each trial
+% as = randn(n+nl,1).*sa+a;
+%%%%%%%%
+% slow autoregressive drift 
+sa = 0.1;
+sv = 0.08;
+sk = sqrt((sa^2-sv^2)/(sa^2));
+as = randn.*sa;
+for i = [2:n+nl];
+    as(i) = as(i-1).*sk + randn().*sv;
+end
+as = as' + a;
+% as = ones(n+nl,1).*a;
+
+sfilt = (1-stimw).*stimw.^[0:10];
+sfilt = [1 0.2 -0.15 -0.5 0 0 0 0 0 0 0 0];
+rfilt = (1-respw).*respw.^[0:10];
+
+sp = randn([n+nl,1]).*sm + log10(stims);
+ms = filter(sfilt, [1], sp);
+
+na = fxm(ms,as,k);
+nr = filter(rfilt, [1], na);
+ 
+ns = round(max(1,10.^nr));
+ns = ns(nl+1:n);
+stims = stims(nl+1:n);
+% figure();
+% loglog(stims(2:n+1), ns, 'r.');
+% hold on;
+% loglog([1, 300], [1, 300], 'k-')
+
+v1 = mean(diff(as).^2)
+[a1 a2] = ndgrid(as,as);
+for i = [1:30] v(i) = mean(diag((a1-a2).^2,i)); end
+plot(v./(v1.*[1:30]))

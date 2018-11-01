@@ -1,0 +1,51 @@
+Number experiment let's try various models.
+========================================================
+
+First -- load in data from one subject, then try to see what various models would predict.
+
+```{r}
+setwd('~/PROJECTS/number-line/numexpt/R/')
+rm(list=ls())
+
+source('~/CODE/R/utilities.R')
+
+files <- list.files('../data/')
+
+dat <- data.frame()
+subject <- 1
+for(f in files){
+  q = read.csv2(paste('../data/', f, sep=""), sep=",", header=T, colClasses="character")
+  q$subject = subject
+  dat <- rbind(dat, q)
+  subject <- subject+1
+}
+
+to.num <- function(x){as.numeric(as.character(x))}
+dat$run <- to.num(dat$run)
+dat$index <- to.num(dat$index)
+dat$num_dots <- to.num(dat$num_dots)
+dat$answer1 <- to.num(dat$answer1)
+dat$answer2 <- to.num(dat$answer2)
+dat$points1 <- to.num(dat$points1)
+dat$points2 <- to.num(dat$points2)
+dat$time <- to.num(dat$time)
+dat$answer <- 10^(log10(pmax(1, dat$answer1))/2+log10(pmax(1, dat$answer2))/2)
+
+head(dat)
+
+s1 <- subset(dat, dat$subject==1)
+
+```
+
+Basic 
+-------------------
+
+```{r}
+
+tmp = subset(dat, dat$subject==1)
+
+plot(log10(dat$num_dots), log10(dat$answer))
+for(dat){
+  
+}
+```

@@ -1,0 +1,37 @@
+******************************
+2013-04-28 20:37:15
+-- no ideas
+
+******************************
+2013-04-28 17:03:33
+EXPERIMENT SUMMARIES...
+
+* numexpt
+  300 trials
+  no feedback
+  two responses per trial
+  - slow autocorrelation
+  - modular/blocked reliability slow
+  - var_k/k*var_1 saturates at 25%, time constant:14
+* numexpt-fb
+  750 trials
+  150 no fb; 150 fb1; 150 no fb; 150 fb2; no fb
+  two fb groups [0.9 1.1] and [1.1 0.9]
+  fb via points, only miscalibrated above 30
+  - fb includes correct answer
+  - negative correlation with long separations
+* numexpt-fb-2
+  750 trials
+  250 no fb; 250 fb; 250 no fb
+  two fb groups: 0.8 and 1.2
+  - fb includes correct answer
+  - some evidence that drift is slower with fb... and?
+* CorrectNum
+  500 trials
+  0x100; +x100; 0x100; +x100; 0x100
+  two fb groups
+  - fb only through rewards.
+* AMT experiments
+  - too few trials per subject to be particularly useful
+
+  

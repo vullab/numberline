@@ -1,0 +1,40 @@
+%% smoothed regression
+% ax+b
+% ak + b = k
+% (a-1)k = -b
+% k = -b/(a-1)  % this is the x value where we diverge from the diagonal
+% alternatively, we can specify the slope and divergence point to get the
+% linear functionm:
+% b = -(a-1)/k
+% bilinear version
+
+close all
+
+n = 1000;
+sm = 0.01;
+mags = linspace(0,3,0.001);
+nums = linspace(0,3,0.001);
+a = 0.75;
+sa = 0.05;
+k = log10(10);
+
+fxm = @(m,a,k)((m<=k).*m + (m>k).*(m.*a-(a-1)/k));
+
+
+
+
+stims = round(10.^(rand(n,1).*log10(300)));
+
+as = randn(n,1).*sa+a;
+ms = randn([n,1]).*sm+log10(stims);
+ns = round(10.^fxm(ms,as,k));
+loglog(stims, ns, 'r.');
+hold on;
+loglog([1, 300], [1, 300], 'k-')
+
+%% consider cross corrrelations
+
+figure();
+xcf = crosscorr(log10(ns), log10(ns), 50);
+plot(xcf(51,101), 
+

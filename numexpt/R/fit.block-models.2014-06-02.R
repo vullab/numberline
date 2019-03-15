@@ -98,7 +98,7 @@ s1 <- do.call(cbind.fill, lapply(fitsBlock, namedSlopes))
 ss1 <- do.call(cbind.fill, lapply(fitsBlock, namedSEs))
 slopes <- data.frame(s1)
 slopes$subject <- rownames(s1)
-slopes <- melt(slopes)
+slopes <- reshape::melt(slopes)
 names(slopes) <- c("subject", "block", "slope")
 levels(slopes$block) <- 1:ncol(s1)
 slopes$block <- as.numeric(as.character(slopes$block))
@@ -113,24 +113,74 @@ ggplot(slopes, aes(x=block, y=slope)) +
   stat_summary(fun.y=mean, geom="line", colour="red", size=2)+
   scale_x_continuous(minor_breaks=c())+
   scale_y_continuous(minor_breaks=c())+
-  mytheme
+  #mytheme+
+  ggtitle("Slopes fit to data by block")
+  
 
-R = cor(s1,s1, use="pairwise.complete.obs")
-rownames(R) <- c()
-colnames(R) <- c()
-mcor <- melt(R)
-names(mcor) <- c("Var1", "Var2", "value")
-mcor <- mcor[mcor$Var1<=mcor$Var2,]
-mcor$value[mcor$Var1==mcor$Var2] <- NA
-ggplot(mcor, aes(x=as.factor(Var1), y=as.factor(Var2), fill=value)) + 
+R = cor(s1, s1, use="pairwise.complete.obs")
+rownames(R) = c()
+colnames(R) = c()
+mcor = reshape::melt(R)
+names(mcor) = c("Var1", "Var2", "value")
+mcor = mcor[mcor$Var1 <= mcor$Var2,]
+mcor$value[mcor$Var1 == mcor$Var2] = NA
+ggplot(mcor, aes(x = as.factor(Var1), y = as.factor(Var2), fill = value)) + 
   geom_tile() + 
-  scale_fill_gradient2(low = "white", mid="white", high = "red", midpoint=0.3, limits=c(-0.5,1))+
-  xlab("")+ylab("")+
+  scale_fill_gradient2(low = "white", mid = "white", high = "red", midpoint = 0.3, limits = c(-0.5, 1))+
+  xlab("") + ylab("") +
+  ggtitle("Trial block slope correlations for participant data") +
   scale_x_discrete(expand = c(0,0)) +
   scale_y_discrete(expand = c(0, 0)) + 
-  mytheme + 
+  #mytheme + 
   theme(axis.ticks = element_blank(), 
         axis.text = element_text(size = 16, face = "bold"),
         axis.text.y = element_text(angle = 90),
         legend.title = element_blank(),
-        legend.text = element_text(size = 12, face="bold"))
+        legend.text = element_text(size = 12, face = "bold"),
+        title = element_text(size = 12, face = "bold"),
+        panel.grid = element_blank())
+
+
+
+# addition erikb: show drift at greater distances
+cors.dist.blocks = list('dist' = numeric(), 'cors' = c())
+for (x in seq(1:(30 - 1))) {
+  cors.dist.blocks[[x]] = list('dist' = x, 'cors' = c())
+}
+
+for (row in seq(from = 1, to = dim(R)[1])) {
+  for (col in seq(from = row, to = dim(R)[2])) { # NB: this does funky stuff without 'from'
+    dist.val = (col - row)
+    cor.val = R[row, col]
+    if (dist.val > 0 & !is.na(cor.val)) {
+      cors.dist.blocks[[dist.val]]$cors = c(cors.dist.blocks[[dist.val]]$cors, cor.val)
+    }
+  }
+}
+
+# Validate distance correlations
+length(cors.dist.blocks[[1]]$cors)
+cors.dist.blocks[[1]]$cors[1]
+
+
+
+
+# Get summary data frame for displaying distance correlations
+cor.means.df.blocks = data.frame()
+for (x in seq(1:length(cors.dist.blocks))) {
+  dist = cors.dist.blocks[[x]]$dist * 10
+  mean = mean(cors.dist.blocks[[x]]$cors)
+  se = sd(cors.dist.blocks[[x]]$cors) / sqrt(length(cors.dist.blocks[[x]]$cors))
+  row = data.frame('dist' = dist, 'mean.cor' = mean, 'se' = se)
+  cor.means.df.blocks = rbind(cor.means.df.blocks, row)
+}
+
+cor.means.df.blocks %>%
+  ggplot(aes(x = dist, y = mean.cor)) +
+  geom_point() +
+  geom_errorbar(aes(x = dist, ymin = mean.cor - se, ymax = mean.cor + se)) +
+  ylim(0.25, 1) +
+  labs(x = "trial distance", y = "correlation of slopes (mean correlation, error bars = se)") +
+  ggtitle("Drift in correlation of slopes at greater trial distances for participants") +
+  theme(panel.grid = element_blank())
+

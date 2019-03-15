@@ -44,7 +44,7 @@ BIGFONT.set_bold(True)
 def scoreFunction(x,n):
 	x = x+0.1
 	return int(max(0,10-20*(math.log(x)-math.log(n))**2))
-		
+
 def getCoord(i):
 	ring = getMinI(i-1)
 	nring = max(1, (ring-1)*6)
@@ -57,7 +57,7 @@ def getCoord(i):
 def quit(signal=False):
 	if(signal):
 		print('\nUser quit with message:\n"'+str(signal)+'"')
-	print '\n********************\nThank you for your participation!'
+	print('\n********************\nThank you for your participation!') # erikb added
 	sys.exit(0)
 
 def waitForKey():
@@ -84,11 +84,11 @@ def dotCenters(n, Rdot, Rspace):
 		txy = (int(xy[0]*Rspace*2+center[0]), int(xy[1]*Rspace*2+center[1]))
 		dots.append(txy)
 	return(dots)
-			
+
 def drawDots(dots, Rdot):
 	for txy in dots:
 		pygame.draw.circle(SCREEN, dotCol, txy, Rdot)
-		
+
 def drawFeedback(dots, Rdot, feedback):
 	drawDots(dots,Rdot)
 	textimg = BIGFONT.render(str(feedback), 1, (255,0,0))
@@ -135,4 +135,3 @@ pygame.display.flip()
 waitForKey()
 
 quit()
-

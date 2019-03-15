@@ -1,9 +1,9 @@
 # fit power and bipower models, generate curves.
 
-setwd('~/PROJECTS/number-line/numexpt/R/')
+#setwd('~/PROJECTS/number-line/numexpt/R/')
 rm(list=ls())
 
-source('~/CODE/R/utilities.R')
+#source('~/CODE/R/utilities.R')
 library(stats4)
 
 
@@ -127,5 +127,5 @@ ggplot(dat, aes(x=num_dots, y=answer))+
   xlab("Number presented")+
   ylab("Number reported")+
   annotate("rect", xmin=1, xmax=5, ymin=1, ymax=300, fill="black", alpha=0.3)+
-  mytheme+
+  #mytheme+
   facet_wrap(~subject, ncol=6)

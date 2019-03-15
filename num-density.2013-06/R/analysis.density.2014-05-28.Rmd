@@ -124,7 +124,7 @@ ggplot(sdat, aes(x=num_dots, y=answer))+
     xlab("Number presented")+
     ylab("Median reported")+
     ggtitle(subnames[i])+
-    mytheme+
+    #mytheme+
     facet_wrap(~block, ncol=4)
 ```
 
@@ -181,6 +181,6 @@ ggplot(dat, aes(x=num_dots, y=answer))+
     mylogy(ylims)+
     xlab("Number presented")+
     ylab("Number reported")+
-    mytheme+
+    #mytheme+ # TODO erikb commented this out
     facet_wrap(~vary, ncol=3)
 ```

@@ -84,6 +84,11 @@ for(i in 1:length(vary)){
   }
 }
 
+# TODO namedSlopes not declared prior to call below?
+# NB: works with 
+load('fit-block-models.Rdata')
+library(reshape)
+
 SLOPES = data.frame()
 for(i in 1:length(vary)){
   slopes <- data.frame(do.call(cbind.fill, lapply(fitsBlock[[i]], namedSlopes)))
@@ -94,6 +99,8 @@ for(i in 1:length(vary)){
   levels(slopes$block) <- 0:(length(trialcuts)-2)
   SLOPES <- rbind(SLOPES, slopes)
 }
+
+# TODO erikb this doesn't seem to work but code after it runs fine
 
 ggplot(SLOPES, aes(x=as.numeric(block), y=slope, color=vary, fill=vary)) +
   stat_summary(fun.data=mean_se, 
@@ -147,7 +154,7 @@ p1<- ggplot(subset(mcor, mcor$type=="size-size"), aes(x=as.factor(Var1), y=as.fa
   scale_fill_gradient2(low = "white", mid="white", high = rgb(r,0,0), midpoint=0, limits=c(-1,1))+
   xlab("")+ylab("")+
   scale_x_discrete(expand = c(0,0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
+  scale_y_discrete(expand = c(0, 0)) +
   mytheme + 
   theme(axis.ticks = element_blank(), 
         axis.text = element_text(size = 16, face = "bold"),
@@ -224,7 +231,8 @@ p6<- ggplot(subset(mcor, mcor$type=="space-area"), aes(x=as.factor(Var1), y=as.f
         axis.text = element_text(size = 16, face = "bold"),
         axis.text.y = element_text(angle = 90),
         legend.title = element_blank(),
-        legend.text = element_text(size = 12, face="bold")) 
+        legend.text = element_text(size = 12, face="bold"))
+
 
 multiplot(p1,p4,p2,p5,p3,p6,cols=3)
 
@@ -232,6 +240,8 @@ getbits <- function(i,j){offdiagonal(R[[i]][[j]],0)[1:12]}
 
 # c("size-size", "space-space", "area-area", "size-space", "size-area", "space-area"))
 # c(rgb(r,0,0), rgb(0,g,0), rgb(0,0,b), rgb(r/s,g/s,0), rgb(r/s,0,b/s), rgb(0,g/s,b/s)))+
+
+# TODO erikb below is the first slope correlation chart we want
   
 blocks = 0:11
 ggplot()+
@@ -244,7 +254,44 @@ ggplot()+
   ylab("Correlation") + xlab("Block")+
   scale_x_continuous(breaks=blocks, minor_breaks=c())+
   mytheme
-  
+
+# TODO erikb new version with legend
+new_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 32),
+  axis.title.y = element_text(face = "bold", size = 32),
+  axis.title.x = element_text(face = "bold", size = 32),
+  legend.title = element_text(face = "bold", size = 28),
+  # axis text
+  axis.text.y = element_text(size = 14),
+  axis.text.x = element_text(size = 14),
+  # legend text
+  legend.text = element_text(size = 24),
+  # background color, axis lines
+  panel.background = element_blank(),
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+
+ggplot()+
+  geom_point(aes(x=blocks, y=getbits(1,2)), color="red", size=2)+
+  geom_line(aes(x=blocks, y=getbits(1,2), color="size-density"), size=1)+
+  geom_point(aes(x=blocks, y=getbits(1,3)), color="blue", size=2)+
+  geom_line(aes(x=blocks, y=getbits(1,3), color="size-area"), size=1)+
+  geom_point(aes(x=blocks, y=getbits(2,3)), color="green4", size=2)+
+  geom_line(aes(x=blocks, y=getbits(2,3), color="density-area"), size=1)+
+  ylab("Correlation") + xlab("Block")+ ggtitle("Slope correlations by trial block") +
+  scale_x_continuous(breaks=blocks, minor_breaks=c())+
+  scale_y_continuous(limits=c(0,1), breaks=seq(0,1,by=0.2)) +
+  #mytheme +
+  new_theme +
+  scale_color_manual(name = "slope comparison",
+                     values = c("size-density" = "red", "size-area" = "blue", "density-area" = "green4"),
+                     labels = c("size-density" = "size-density", "size-area" = "size-area", "density-area" = "density-area"))
+
+
 
 gettcor <- function(vi,vj, R){
   out = data.frame()
@@ -258,6 +305,18 @@ gettcor <- function(vi,vj, R){
   }
   return(out)
 }
+
+# TODO erikb added packages to run the code below
+library(psych)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("graph", version = "3.8")
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("RBGL", version = "3.8")
+library(graph)
+library(RBGL)
+library(QuACN)
 
 
 fullD = data.frame()
@@ -280,6 +339,8 @@ for(i in 1:length(vary)){
   }
 }
 
+# TODO erikb this is the second graph we want but it only works with mytheme commented out
+
 r = 1.0
 g = 0.7
 b = 1
@@ -294,8 +355,94 @@ ggplot(data=df)+
   scale_x_continuous(breaks=ds*50, minor_breaks=c())+
   scale_y_continuous(limits=c(0,1), breaks=seq(0,1,by=0.1), minor_breaks=c())+
   ylab("Normalized Correlation")+
-  xlab("Distance (trials)")+
-  mytheme
+  xlab("Distance (trials)")
+  #new_theme
+  #mytheme
+
+# TODO erikb new version cleaned up
+df$type <- factor(df$type, levels=c("size-size", "space-space", "area-area", "size-space", "size-area", "space-area"))
+dfr$type <- factor(dfr$type, levels=c("size-size", "space-space", "area-area", "size-space", "size-area", "space-area"))
+ggplot(data=df)+
+  geom_point(aes(x=distances, y=nmu, color=type), size=2)+
+  geom_linerange(aes(x=distances, ymin=nll, ymax=nul, color=type), size=1)+
+  geom_line(aes(x=distances, y=nmu, color=type), size=1)+
+  scale_colour_manual(values=c(rgb(r,0,0), rgb(0,g,0), rgb(0,0,b), rgb(r/s,g/s,0), rgb(r/s,0,b/s), rgb(0,g/s,b/s)))+
+  scale_x_continuous(breaks=ds*50, minor_breaks=c())+
+  scale_y_continuous(limits=c(0,1), breaks=seq(0,1,by=0.1), minor_breaks=c())+
+  ylab("Correlation") + xlab("Distance (trials)") + ggtitle("Slope correlations by trial distance") +
+  theme(legend.position="bottom") +
+  new_theme +
+  scale_color_manual(name = "slope comparison",
+                     values = c(rgb(r,0,0), rgb(0,g,0), rgb(0,0,b), rgb(r/s,g/s,0), rgb(r/s,0,b/s), rgb(0,g/s,b/s)),
+                     labels = c("size-size" = "size-size", "space-space" = "density-density", "area-area" = "area-area", "size-space" = "size-density", "size-area" = "size-area", "space-area" = "density-area"))
+  #mytheme
+
+# TODO erikb graph copied over from `analysis.density.2014-05-28.Rmd`
+ylims = xlims
+subnames <- unique(dat$vary)
+#subnames[2] = "density"
+cuts <- c(9.5:20.5, 10^seq(log10(21.5), log10(maxn), length.out=20))
+X <- data.frame()
+for(i in 1:length(subnames)){
+  sdat <- subset(dat, dat$vary == subnames[i])
+  sdat$bin <- cut(sdat$num_dots, breaks=cuts, labels=seq_len(length(cuts)-1), include.lowest=T)
+  truens <- cbind(by(sdat$num_dots, 
+                     sdat$bin, 
+                     median))
+  medians <- cbind(by(sdat$answer, 
+                      sdat$bin, 
+                      median))
+  RT <- cbind(by(sdat$time, 
+                 sdat$bin, 
+                 function(x){median(x)}))
+  errsd <- cbind(by(sdat, 
+                    sdat$bin, 
+                    function(x){sd(log10(x$answer)-log10(x$num_dots))}))
+  acc <- cbind(by(sdat, sdat$bin, function(tmp){mean(tmp$num_dots == tmp$answer)}))
+  X <- rbind(X, 
+             data.frame(truens=truens[,1], 
+                        medians=medians[,1], 
+                        RT=RT[,1], 
+                        err=1-acc[,1], 
+                        block = rep(subnames[i], length(acc[,1]))))
+}
+ggplot(dat, aes(x=num_dots, y=answer))+
+  geom_point(colour="blue", size=2, alpha=0.05)+
+  geom_point(data=X, aes(x=truens, y=medians), colour="red", size=2)+
+  geom_line(data=X, aes(x=truens, y=medians), colour="red", size=1)+
+  geom_abline(position="identity")+
+  mylogx(xlims)+
+  mylogy(ylims)+
+  xlab("Number presented") + ylab("Number reported") + ggtitle("Accuracy across estimate conditions") +
+  #mytheme+
+  #new_theme +
+  facet_wrap(~vary, ncol=3,
+             labeller = labeller(vary = c("area" = "area", "size" = "size", "space" = "density"))) +
+  theme(
+    # titles
+    plot.title = element_text(face = "bold", size = 32),
+    axis.title.y = element_text(face = "bold", size = 32),
+    axis.title.x = element_text(face = "bold", size = 32),
+    legend.title = element_text(face = "bold", size = 16),
+    # axis text
+    axis.text.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14, angle = 90, hjust = 0, vjust = 0),
+    # legend text
+    legend.text = element_text(size = 14),
+    # facet text
+    strip.text = element_text(face = "bold", size = 28),
+    # backgrounds, lines
+    panel.background = element_blank(),
+    strip.background = element_blank(),
+    
+    panel.grid = element_line(color = "gray"),
+    axis.line = element_line(color = "black"),
+    # positioning
+    legend.position = "bottom"
+  )
+
+
+
 
 save(file='fit-block-models.Rdata', list=ls())
 
@@ -375,6 +522,7 @@ gettcor <- function(R){
   }
   return(out)
 }
+
 
 t <- gettcor(R)
 t$distances = 1:(ncuts-1)*trialspercut

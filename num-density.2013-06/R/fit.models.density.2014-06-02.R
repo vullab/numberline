@@ -106,5 +106,66 @@ ggplot(sdat, aes(x=num_dots, y=answer))+
   mylogy(c(1,300))+
   xlab("Number presented")+
   ylab("Number reported")+
-  mytheme+
+  #mytheme+
   facet_wrap(~subject, ncol=2)
+
+
+
+
+new_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 32),
+  axis.title.y = element_text(face = "bold", size = 32),
+  axis.title.x = element_text(face = "bold", size = 32),
+  legend.title = element_text(face = "bold", size = 16),
+  # axis text
+  axis.text.y = element_text(size = 16),
+  axis.text.x = element_text(size = 14),
+  # legend text
+  legend.text = element_text(size = 14),
+  # background color, axis lines
+  panel.background = element_blank(),
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+subjects = c(8, 27, 49)
+sdat = subset(dat, dat$subject %in% subjects)
+spredictions = subset(predictions, predictions$subject %in% subjects)
+ggplot(sdat, aes(x=num_dots, y=answer))+
+  geom_point(alpha=0.25, color="blue", size=6)+
+  #geom_line(data=spredictions, aes(x=num_dots, y=powpred), color=rgb(1, 0, 0), size=3)+
+  #geom_line(data=spredictions, aes(x=num_dots, y=bipred), color=rgb(0, 0.7, 0), size=3)+
+  geom_abline(position="identity")+
+  mylogx(c(1,750))+
+  mylogy(c(1,750))+
+  xlab("Number presented")+
+  ylab("Number reported")+
+  #new_theme +
+  #mytheme+
+  facet_wrap(~subject, ncol=3) +
+  ggtitle("Estimation data for sample participants") +
+  theme(
+    # titles
+    plot.title = element_text(face = "bold", size = 32),
+    axis.title.y = element_text(face = "bold", size = 32),
+    axis.title.x = element_text(face = "bold", size = 32),
+    legend.title = element_text(face = "bold", size = 16),
+    # axis text
+    axis.text.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14, angle = 90, hjust = 0, vjust = 0),
+    # legend text
+    legend.text = element_text(size = 24),
+    # facet text
+    strip.text = element_text(face = "bold", size = 28),
+    # backgrounds, lines
+    panel.background = element_blank(),
+    strip.background = element_blank(),
+    
+    panel.grid = element_line(color = "gray"),
+    axis.line = element_line(color = "black"),
+    # positioning
+    legend.position = "bottom"
+  )
+  

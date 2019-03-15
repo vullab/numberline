@@ -1,6 +1,7 @@
 # fit power and bipower models, generate curves.
 
-setwd('~/PROJECTS/number-line/num-density.2013-06/R/')
+#setwd('~/PROJECTS/number-line/num-density.2013-06/R/')
+setwd("/Users/erikbrockbank/web/vullab/numberline/num-density.2013-06/R/")
 rm(list=ls())
 
 fbtrials = 1:25

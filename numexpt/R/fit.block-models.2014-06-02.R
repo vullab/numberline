@@ -178,9 +178,10 @@ for (x in seq(1:length(cors.dist.blocks))) {
 cor.means.df.blocks %>%
   ggplot(aes(x = dist, y = mean.cor)) +
   geom_point() +
-  geom_errorbar(aes(x = dist, ymin = mean.cor - se, ymax = mean.cor + se)) +
+  geom_pointrange(aes(x = dist, ymin = mean.cor - se, ymax = mean.cor + se)) +
   ylim(0.25, 1) +
-  labs(x = "trial distance", y = "correlation of slopes (mean correlation, error bars = se)") +
-  ggtitle("Drift in correlation of slopes at greater trial distances for participants") +
-  theme(panel.grid = element_blank())
+  labs(x = "trial distance", y = "correlation of slopes") +
+  #ggtitle("Drift in correlation of slopes at greater trial distances") +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 16, face = "bold"))
 

@@ -1,6 +1,9 @@
 
 
 ### README ###
+#' This file does a basic MCMC slope sampling for 24 "participants" over 300 trials each to show that the drift 
+#' in slope correlations for participant data can be thought of (and modeled in a basic sense) as an MCMC-like sampling process.
+#' 
 #' This can be run all by itself and should produce all the graphs necessary for mcmc simulated data.
 #' To get the equivalent participant data, clear the variable set and run `fit.models.2014-06-02.R`. 
 #' This will read in and fit the participant data (may be possible to just load the Rdata file it writes to).
@@ -63,15 +66,34 @@ glimpse(data)
 
 load('model.fits.Rdata') # Avoids having to re-fit model just for looking at data
 #load('../../num-density.2013-06/R/fit-block-models.Rdata') # Necessary for graph below
+# Copying these here instead of loading the above
+my.log.breaks = function(lims){
+  majors = seq(floor(log10(lims[1])), ceiling(log10(lims[2])), by = 1)
+  minors = log10(unlist(lapply(majors[-1], function(x){seq(10^(x - 1), 9 * 10^(x - 1), by = 10^(x - 1))})))
+  return(list(majors, minors))
+}
+mylogx = function(lims){
+  breaks = my.log.breaks(lims)
+  scale_x_log10(limits = lims, 
+                breaks = 10^breaks[[1]], 
+                minor_breaks = breaks[[2]])
+}
+mylogy = function(lims){
+  breaks <- my.log.breaks(lims)
+  scale_y_log10(limits = lims, 
+                breaks = 10^breaks[[1]], 
+                minor_breaks = breaks[[2]])
+}
+
 ggplot(data, aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.25, color = "red") +
-  geom_line(data = predictions, aes(x = num_dots, y = bipred), color = rgb(0, 0.6, 0), size = 1) +
+  #geom_line(data = predictions, aes(x = num_dots, y = bipred), color = rgb(0, 0.6, 0), size = 1) +
   geom_abline(position = "identity") +
   mylogx(c(1, 300)) +
   mylogy(c(1, 300)) +
   xlab("Number presented") +
   ylab("Number reported") +
-  ggtitle("Experiment data for 24 participants") +
+  #ggtitle("Experiment data for 24 participants") +
   annotate("rect", xmin = 1, xmax = 5, ymin = 1, ymax = 300, fill = "black", alpha = 0.3) +
   facet_wrap(~subject, ncol = 6)
 
@@ -184,7 +206,8 @@ exp.df[[1]]$subj
 exp.df[[1]]$mcmc.df %>%
   ggplot(aes(x = iter, y = slope)) +
   geom_point() +
-  labs(x = "trial (1-300)", y = "slope")
+  labs(x = "trial (1-300)", y = "slope") +
+  ggtitle("MCMC slope results, 300 trials")
 
 # plot scores for a sample subject (subj 1)
 exp.df[[1]]$mcmc.df %>%
@@ -453,8 +476,7 @@ ggplot(slopes, aes(x = block, y = slope)) +
   scale_x_continuous(minor_breaks = c()) +
   scale_y_continuous(minor_breaks = c())
   #mytheme
-# TODO seems like the slopes being fit here are all ~0? That seems odd? 
-# Actual participant data looks to be the same
+
 
 R = cor(s1, s1, use = "pairwise.complete.obs")
 rownames(R) = c()
@@ -470,7 +492,6 @@ ggplot(mcor, aes(x = as.factor(Var1), y = as.factor(Var2), fill = value)) +
   ggtitle("Trial block slope correlations for model data") +
   scale_x_discrete(expand = c(0,0)) +
   scale_y_discrete(expand = c(0, 0)) + 
-  #mytheme + 
   theme(axis.ticks = element_blank(), 
         axis.text = element_text(size = 16, face = "bold"),
         axis.text.y = element_text(angle = 90),

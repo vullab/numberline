@@ -72,7 +72,7 @@ sample.bumper.mappings = function(prev.trials) {
   prev.trials = prev.trials %>%
     add_row(subject = unique(prev.trials$subject),
             num.dots = BUMPER_SET,
-            model.answer = BUMPER_SET,
+            model.answer = BUMPER_SET, # can make this a noisy sample rather than an exact mapping
             bumper.trial = TRUE)
   
   return(prev.trials)

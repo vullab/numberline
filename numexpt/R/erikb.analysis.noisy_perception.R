@@ -98,9 +98,28 @@ calculate.loglik = function(prev.trials) {
   X[A <= B] = log10(P[A <= B]) # NB: if we switch this to < and the next line to >=, it makes a big diff, not totally clear why
   X[A > B] = log10(1 - P[A > B])
   # across each previous trial that we've calculated a log likelihood vector for above, calculate aggregate likelihood for estimates
-  new.loglik = data.frame('number.est' = seq(MIN_ESTIMATE:MAX_ESTIMATE), 'sum.loglik' = colSums(X))
+  loglik = data.frame('number.est' = seq(MIN_ESTIMATE:MAX_ESTIMATE), 'sum.loglik' = colSums(X))
   
-  return(new.loglik)
+  # process log likelihood calculated above
+  loglik = loglik %>%
+    mutate(
+      sum.loglik = sum.loglik - max(sum.loglik), #add a constant C to each value in loglike to make it more reasonable
+      loglik.probability.raw = 10 ^ sum.loglik # reconvert out of log space
+    )
+  
+  return(loglik)
+}
+
+# calculate posterior by taking in log likelihood data, assuming power law prior
+# NB: this can be modified to make different assumptions about the prior
+calculate.posterior = function(loglik) {
+  posterior = loglik %>%
+    mutate(prior = number.est ^ PRIOR_EXP, # assume power law probability of seeing a particular number
+           prior.norm = prior / sum(prior), # normalize
+           posterior.raw = loglik.probability.raw * prior.norm, # multiply loglik by the prior
+           posterior.norm = posterior.raw / sum(posterior.raw)) # normalize
+  
+  return(posterior)
 }
 
 
@@ -201,15 +220,8 @@ for (trial.i in seq(1, max(single.subj.data$trial))) { # iterate over all trials
     
     # calculate initial log likelihood for this trial based on p.mag.greater from previous trials
     loglik = calculate.loglik(prev.trials)
-    # process log likelihood obtained above, calculate posterior
-    posterior = loglik %>%
-      mutate(prior = number.est ^ PRIOR_EXP,
-             prior.norm = prior / sum(prior),
-             sum.loglik = sum.loglik - max(sum.loglik),  #add a constant C to each value in new.loglik to make it more reasonable
-             loglik.probability.raw = 10 ^ sum.loglik, # reconvert out of log space
-             posterior.raw = loglik.probability.raw * prior.norm, # multiply loglik by the prior
-             posterior.norm = posterior.raw / sum(posterior.raw)) # normalize
-             
+    # calculate posterior using log likelihood calculated above
+    posterior = calculate.posterior(loglik)
     
     # Generate an estimate from the posterior 
     # -> (functions above for mean, median, probability matched sample, or MAP)
@@ -226,7 +238,7 @@ for (trial.i in seq(1, max(single.subj.data$trial))) { # iterate over all trials
 ### ANALYSIS ###
 ################
 
-# Quick view estimates and true numbers across trials
+# Quick view of true numbers and estimates across trials
 results = single.subj.data %>%
   select(trial, num.dots, model.answer) %>%
   arrange(trial)
@@ -283,6 +295,20 @@ posterior %>%
 single.subj.data[7,] # the plot above should be converging on something similar to this (be sure to use correct index)
 
 
+
+
+
+#' Analysis TODO 
+#' 
+#' claim 1. if you get to sample (whether from the identity line or from your previous trials as long as they’re reasonably accurate), you can do the mapping —> with fewer samples than you would expect
+#' 
+#' claim 2
+#' there’s a set of such models (or model conditions) that produce people’s underestimations
+#' - we need a procedure that produces human curves in euquilibrium (check the last N to make sure it still looks okay, try doing more than 300): human like mapping should come out not from the average but from steady state
+#' - “some combination of these samples and prior produces characteristic underestimation as samples drop and for the right L”
+#' 
+#' claim 3
+#' there’s a very simple class of such models (add in noisy distribution around the identity line during posterior calculation, use not too many samples) that drifts
 
 
 

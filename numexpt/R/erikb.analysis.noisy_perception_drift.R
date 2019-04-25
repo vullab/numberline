@@ -41,7 +41,6 @@ MODEL_DATA = data %>%
   # align column names to match participant data
   rename(answer = model.answer)
 
-TARGET_DATA = MODEL_DATA # Toggle this variable to plot drift for subject or model data
 
 #################
 ### FUNCTIONS ###
@@ -138,63 +137,70 @@ fit.slopes = function(blocksizes, data) {
   return(fitsBlock)
 }
 
-
-get.distance.cors = function(cor.matrix) {
-  # initialize list of slope correlations by distance
-  cors.dist.blocks = list('dist' = numeric(), 'cors' = c())
-  for (i in seq(1:(BLOCKSIZE - 1))) {
-    cors.dist.blocks[[i]] = list('dist' = i, 'cors' = c())
-  }
+# Get m blocks by m blocks matrix of fitted slope correlations between each block
+get.cor.matrix = function(slopes) {
+  # Calculate slope correlations
+  block.slopes = do.call(cbind.fill, lapply(slopes, namedSlopes)) # m subjects by n blocks slope values
+  cor.matrix = cor(block.slopes, block.slopes, use = "pairwise.complete.obs") # n blocks by n blocks slope correlation matrix
+  rownames(cor.matrix) = c() # NB: clearing out rownames and colnames is necessary for the processing below
+  colnames(cor.matrix) = c()
   
-  # populate list of slope correlations by distance based on slope correlation matrix cor.matrix
-  for (row in seq(from = 1, to = dim(cor.matrix)[1])) {
-    for (col in seq(from = row, to = dim(cor.matrix)[2])) { # NB: this does funky stuff without 'from'
-      dist.val = (col - row)
-      cor.val = cor.matrix[row, col]
-      if (dist.val > 0 & !is.na(cor.val)) {
-        cors.dist.blocks[[dist.val]]$cors = c(cors.dist.blocks[[dist.val]]$cors, cor.val)
-      }
-    }
-  }
-  
-  return(cors.dist.blocks)
+  return(cor.matrix)
 }
 
+# Convert m blocks by m blocks matrix of fitted slope correlations to data frame
+# Has column for each block and correlation between those blocks
+# Initially has m^2 rows for each pair of blocks, then prunes out lower half
+get.cor.df = function(cor.matrix) {
+  slope.cor.df = reshape::melt(cor.matrix) # data frame with columns for block x, block y, and slope correlation b/n those blocks, n blocks x n blocks rows
+  names(slope.cor.df) = c("block1", "block2", "slope.corr")
+  slope.cor.df = slope.cor.df[slope.cor.df$block1 <= slope.cor.df$block2,] # remove redundant lower half of matrix
+  slope.cor.df$slope.corr[slope.cor.df$block1 == slope.cor.df$block2] = NA # set correlation to NA in identical blocks
+  
+  return(slope.cor.df)
+}
+
+# Format data frame of correlations by block pair to show mean, se of correlations by block distance across blocks
+get.distance.cors = function(cor.df) {
+  dist.df = cor.df %>%
+    mutate(block.dist = block2 - block1,
+           trial.dist = 10 * block.dist) %>%
+    group_by(trial.dist) %>%
+    summarize(mean.cor = mean(slope.corr),
+              se.cor = sd(slope.corr) / sqrt(length(slope.corr))) %>%
+    filter(trial.dist > 0)
+  
+  return(dist.df)
+}
 
 
 #######################
 ### DATA PROCESSING ###
 #######################
 
+### Subject Data ###
 # Fit slopes, NB: this can take a minute or two
-fitsBlock = fit.slopes(c(BLOCKSIZE), TARGET_DATA)
-
-# Calculate slope correlations
-block.slopes = do.call(cbind.fill, lapply(fitsBlock, namedSlopes)) # m subjects by n blocks slope values
-cor.matrix = cor(block.slopes, block.slopes, use = "pairwise.complete.obs") # n blocks by n blocks slope correlation matrix
-rownames(cor.matrix) = c() # NB: clearing out rownames and colnames is necessary for the processing below
-colnames(cor.matrix) = c()
-
-
-# Format cor.matrix as data frame to plot slope correlations by trial block in analysis section below
-slope.cor.df = reshape::melt(cor.matrix) # data frame with columns for block x, block y, and slope correlation b/n those blocks, n blocks by n blocks rows
-names(slope.cor.df) = c("block1", "block2", "slope.corr")
-slope.cor.df = slope.cor.df[slope.cor.df$block1 <= slope.cor.df$block2,] # remove redundant lower half of matrix
-slope.cor.df$slope.corr[slope.cor.df$block1 == slope.cor.df$block2] = NA # set correlation to NA in identical blocks
+fitsBlock.subj = fit.slopes(c(BLOCKSIZE), SUBJ_DATA)
+# Get matrix of fitted slope correlations
+cor.matrix.subj = get.cor.matrix(fitsBlock.subj)
+# Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
+slope.cor.df.subj = get.cor.df(cor.matrix.subj)
+# Process slope correlations by trial distance to get mean, se across participants
+cor.means.df.blocks.subj = get.distance.cors(slope.cor.df.subj)
 
 
-# Format cor.matrix to show slope correlations by trial distance
-cors.dist.blocks = get.distance.cors(cor.matrix)
+### Model Data ###
+# Fit slopes, NB: this can take a minute or two
+fitsBlock.model = fit.slopes(c(BLOCKSIZE), MODEL_DATA)
+# Get matrix of fitted slope correlations
+cor.matrix.model = get.cor.matrix(fitsBlock.model)
+# Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
+slope.cor.df.model = get.cor.df(cor.matrix.model)
+# Process slope correlations by trial distance to get mean, se across participants
+cor.means.df.blocks.model = get.distance.cors(slope.cor.df.model)
 
-# Process slope correlations by trial distane to get mean, se across participants
-cor.means.df.blocks = data.frame()
-for (i in seq(1:length(cors.dist.blocks))) {
-  dist = cors.dist.blocks[[i]]$dist * 10
-  mean = mean(cors.dist.blocks[[i]]$cors)
-  se = sd(cors.dist.blocks[[i]]$cors) / sqrt(length(cors.dist.blocks[[i]]$cors))
-  row = data.frame('dist' = dist, 'mean.cor' = mean, 'se' = se)
-  cor.means.df.blocks = rbind(cor.means.df.blocks, row)
-}
+
+
 
 
 ################
@@ -202,7 +208,8 @@ for (i in seq(1:length(cors.dist.blocks))) {
 ################
 
 # Plot participant/model estimates
-TARGET_DATA %>%
+MODEL_DATA %>%
+# SUBJ_DATA %>%
   ggplot(aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.25, color = "red", size = 0.75) +
   geom_abline() +
@@ -217,11 +224,11 @@ TARGET_DATA %>%
 
 
 # Plot slope correlations by trial block
-slope.cor.df %>%
+slope.cor.df.model %>%
+# slope.cor.df.subj %>%
   ggplot(aes(x = as.factor(block1), y = as.factor(block2), fill = slope.corr)) + 
   geom_tile() + 
   scale_fill_gradient2(low = "white", mid = "white", high = "red", midpoint = 0.3, limits = c(-0.5, 1)) +
-  #scale_fill_gradient2(low = "white", mid = "white", high = "red", midpoint = 0, limits = c(-0.5, 1)) +
   xlab("") + ylab("") +
   ggtitle("Trial block slope correlations") +
   scale_x_discrete(expand = c(0, 0)) +
@@ -235,20 +242,39 @@ slope.cor.df %>%
         panel.grid = element_blank())
 
 
-# Plot slope correlations by trial distance
-cor.means.df.blocks %>%
-  ggplot(aes(x = dist, y = mean.cor)) +
-  geom_point() +
-  geom_errorbar(aes(x = dist, 
-                    ymin = mean.cor - se, 
-                    ymax = mean.cor + se),
+# Plot slope correlations by trial distance for model and human subjects
+ggplot() +
+  # model data
+  geom_point(data = cor.means.df.blocks.model,
+             aes(x = trial.dist,
+                 y = mean.cor,
+                 color = "model")) +
+  geom_errorbar(data = cor.means.df.blocks.model,
+                aes(x = trial.dist,
+                    ymin = mean.cor - se.cor,
+                    ymax = mean.cor + se.cor,
+                    color = "model"),
                 width = 5) +
-  ylim(-0.5, 1) +
-  labs(x = "avg trial distance", y = "correlation of slopes") +
+  # subject data
+  geom_point(data = cor.means.df.blocks.subj,
+             aes(x = trial.dist,
+                 y = mean.cor,
+                 color = "subjects")) +
+  geom_errorbar(data = cor.means.df.blocks.subj,
+                aes(x = trial.dist,
+                    ymin = mean.cor - se.cor,
+                    ymax = mean.cor + se.cor,
+                    color = "subjects"),
+                width = 5) +
+  ylim(-0.25, 1) +
+  labs(x = "avg trial distance", y = "avg correlation of slopes") +
   ggtitle("Drift in correlation of slopes at greater trial distances") +
+  scale_color_manual(name = "Drift", 
+                     values = c("model" = "red", "subjects" = "blue")) +
   theme(panel.grid = element_blank(),
         title = element_text(size = 18, face = "bold"),
-        axis.text = element_text(size = 16, face = "bold"))
+        axis.text = element_text(size = 16, face = "bold"),
+        legend.position = "bottom")
 
 
 

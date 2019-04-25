@@ -230,7 +230,7 @@ SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with proba
 #' -> ESTIMATE_FXN = posterior.sample.pl
 #' -> N_TRIALS_CALIBRATION = 10
 #' -> BUMPER_SET = c(1, 2, 3, 5, 10)
-#' -> SAMPLE_EXP = 4
+#' -> SAMPLE_EXP = 3.75
 #' 
 #' Sensible *mapping*, few samples
 #' -> ESTIMATE_FXN = posterior.mean

@@ -28,6 +28,8 @@ DATA = "../data/"
 MIN_ESTIMATE = 1 # lowest number in the range of dots
 MAX_ESTIMATE = 1000 # highest number in the range of dots
 TRIALS = 300 # number of trials in the experiment (easier to set this as a global than compute it with e.g. max(trial))
+SUBJ = c(17) # sample representative participant(s)
+SUBJ = seq(1:24) # sample representative participant(s)
 
 
 #################
@@ -72,12 +74,17 @@ read.data = function(filepath) {
 
 
 
-# Sample previous trials
-# NB: currently this just fetches the last N trials before the current one,
-# but could easily be modified to e.g. sample at random
-sample.previous.trials = function(trial.i, single.subject.data){
+# Sample previous trials based on exponential decay function with slope TRIALS_EXP
+sample.previous.trials = function(trial.i, single.subject.data, n.trials){
+  # set of number mappings from which to sample bumpers
+  trial_set = data.frame("sub_index" = seq(1, trial.i - 1)) # number of trials *back* from current trial to sample
+  trial_set$sub_index.scaled = trial_set$sub_index ^ TRIALS_EXP # TODO this is exponential but linearly decreasing in log sapce
+  trial_set$ptrial_sub = trial_set$sub_index.scaled / sum(trial_set$sub_index.scaled)
+  prev.trial.sub.indices = sort(with(trial_set, sample(sub_index, n.trials, prob = ptrial_sub, replace = F)))
+  
+  # get only trials m indices prior to trial.i for m in prev.trial.sub.indices
   prev.trials = single.subj.data %>%
-    filter(trial %in% seq(trial.i - N_TRIALS_CALIBRATION, trial.i - 1))
+    filter(trial %in% (trial.i - prev.trial.sub.indices))
   
   return(prev.trials)
 }
@@ -85,15 +92,21 @@ sample.previous.trials = function(trial.i, single.subject.data){
 
 # Sample "bumper" mappings by adding known magnitude -> number mappings to previous trials
 # that are being used for likelihood calculation
-sample.bumper.mappings = function(prev.trials) {
-  bumper_samples = c()
-  for (bumper in BUMPER_SET) {
+sample.bumper.mappings = function(prev.trials, k_bumpers, bumper.min, bumper.max) {
+  # set of number mappings from which to sample bumpers
+  world_vals = data.frame("num" = seq(bumper.min, bumper.max))
+  world_vals$num.scaled = world_vals$num ^ BUMPER_EXP # TODO this is exponential but linearly decreasing in log sapce
+  world_vals$pnum = world_vals$num.scaled / sum(world_vals$num.scaled)
+  bumper_set = with(world_vals, sample(num, k_bumpers, prob = pnum, replace = F))
+  
+  bumper_samples = c() # sampled vaue of bumpers
+  for (bumper in bumper_set) {
     bumper_samples = c(bumper_samples, round(10 ^ rnorm(1, log10(bumper), PERCEIVED_DOTS_NOISE_SD), digits = 0))
   }
   
   prev.trials = prev.trials %>%
     add_row(subject = unique(prev.trials$subject),
-            num.dots = BUMPER_SET,
+            num.dots = bumper_set,
             #model.answer = BUMPER_SET, # DEBUGGING make the bumpers exact
             model.answer = bumper_samples,
             bumper.trial = TRUE)
@@ -107,17 +120,17 @@ calculate.loglik = function(prev.trials) {
   # matrix of number estimates initialized for use in calculation of likelihoods in loop below
   # NB: this matrix A doesn't need to be created every time we call this function but it doesn't slow it down much
   # so I'm keeping it here for compactness
-  A = matrix(rep(1:MAX_ESTIMATE, each = N_TRIALS_CALIBRATION + K_BUMPERS), nrow = N_TRIALS_CALIBRATION + K_BUMPERS)
+  A = matrix(rep(1:MAX_ESTIMATE, each = N_SAMPLES), nrow = N_SAMPLES)
   
   # discretize possible answer estimates, set log likelihood at each value to be either p.mag.greater or 1 - p.mag.greater
   # use matrix with a row for each of the previous trials and a column for each candidate estimate value.
   # each row, col element in X will be the log likelihood that the magnitude on the current trial maps to the column value, given the magnitude 
   #   and corresponding estimate in that row's trial
-  X = matrix(0, nrow = N_TRIALS_CALIBRATION + K_BUMPERS, ncol = MAX_ESTIMATE) # Initialize matrix for storing log likelihoods
+  X = matrix(0, nrow = N_SAMPLES, ncol = MAX_ESTIMATE) # Initialize matrix for storing log likelihoods
   # matrix storing proability in each col that magnitude on this trial is < magnitude in trial indicated by that row
-  P = matrix(rep(1 - prev.trials$p.mag.greater[1:(N_TRIALS_CALIBRATION + K_BUMPERS)], MAX_ESTIMATE), nrow = N_TRIALS_CALIBRATION + K_BUMPERS)
+  P = matrix(rep(1 - prev.trials$p.mag.greater[1:(N_SAMPLES)], MAX_ESTIMATE), nrow = N_SAMPLES)
   # matrix storing numerical estimate generated for each previous trial
-  B = matrix(rep(floor(prev.trials$model.answer[1:(N_TRIALS_CALIBRATION + K_BUMPERS)]), MAX_ESTIMATE), nrow = N_TRIALS_CALIBRATION + K_BUMPERS)
+  B = matrix(rep(floor(prev.trials$model.answer[1:(N_SAMPLES)]), MAX_ESTIMATE), nrow = N_SAMPLES)
   X[A <= B] = log10(P[A <= B]) # NB: if we switch this to < and the next line to >=, it makes a big diff, not totally clear why
   X[A > B] = log10(1 - P[A > B])
   # across each previous trial that we've calculated a log likelihood vector for above, calculate aggregate likelihood for estimates
@@ -180,7 +193,7 @@ posterior.median = function(posterior) {
 # posterior.sample is a special case of this function where l=1
 # higher l will sample closer to MAP, lower l will be closer to mean
 posterior.sample.pl = function(posterior) {
-  post.sample = with(posterior, sample(number.est, 1, prob = (posterior.raw ^ SAMPLE_EXP)))
+  post.sample = with(posterior, sample(number.est, 1, prob = (posterior.raw ^ POSTERIOR_SAMPLE_EXP)))
   return(post.sample)
 }
 
@@ -211,26 +224,33 @@ mylogy = function(lims){
 ### MODEL PARAMS ###
 ####################
 
-# SUBJ = c(17) # sample representative participant(s)
-SUBJ = seq(1:24) # sample representative participant(s)
 PERCEIVED_DOTS_NOISE_SD = 0.01 # log noise of perceived magnitudes
+
 PRIOR_EXP = -1 # exponential slope parameter for prior
-N_TRIALS_CALIBRATION = 25 # number of previous trials to reference in calculating answer estimate
-BUMPER_SET = c(1, 2, 3, 5, 10) # set bumpers manually
-K_BUMPERS = length(BUMPER_SET) # number of bumpers based on manual set
-#K_BUMPERS = 1 # set bumpers based on K param
-#BUMPER_SET = 10 ^ seq(from = log10(MIN_ESTIMATE), to = log10(MAX_ESTIMATE), length.out = K_BUMPERS)
+
+# params for sample from posterior
 ESTIMATE_FXN = posterior.sample.pl
-SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with probability p^l
+POSTERIOR_SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with probability p^l
 
+# params for sample of previous trials
+TRIALS_EXP = -4 # explonential slope parameter for sampling previous trials
 
+# params for sample of real world "bumpers"
+BUMPER_EXP = -4 # exponential slope parameter for sampling "bumper" values
+
+# hyperparams: number of samples and probability that samples are derived from real world bumpers
+N_SAMPLES = 25 # total number of samples to take from previous trials and "bumper" distribution
+P_BUMPER = 0.25 # probability p that a given sample comes from previous trials or real world "bumper" distribution
 
 #' Useful model params:
 #' Sensible *underestimation*
 #' -> ESTIMATE_FXN = posterior.sample.pl
+#' -> SAMPLE_EXP = 4
+#' 
 #' -> N_TRIALS_CALIBRATION = 10
-#' -> BUMPER_SET = c(1, 2, 3, 5, 10)
-#' -> SAMPLE_EXP = 3.75
+#' -> K_BUMPERS = 5
+#' -> BUMPER_EXP = -4 #NB: this must be fairly large negative int to produce underestimation
+#' 
 #' 
 #' Sensible *mapping*, few samples
 #' -> ESTIMATE_FXN = posterior.mean
@@ -267,16 +287,21 @@ for (subj in SUBJ) {
     # get single participant's data to simulate experiment and compare model to participant
     filter(subject == subj)
   for (trial.i in seq(1, TRIALS)) { # iterate over all trials
-    # for (trial.i in seq(1, N_TRIALS_CALIBRATION + 1)) { # DEBUGGING iterate to X trials past calibrated point
-    if (trial.i <= N_TRIALS_CALIBRATION) {
-      # set first N_TRIALS_CALIBRATION values to be a sample from a distribution around the true number of dots
+    # TODO handle first m trials < N_SAMPLES
+    if (trial.i <= N_SAMPLES) {
+      # set first N_SAMPLES values to be a sample from a distribution around the true number of dots
       estimate = round(10 ^ rnorm(1, log10(single.subj.data$num.dots[trial.i]), PERCEIVED_DOTS_NOISE_SD), digits = 0)
       # estimate = single.subj.data$num.dots[trial.i] # DEBUGGING use exact number for initial calibration
     } else {
+      # get set of previous trials and real world bumpers to sample
+      sample.cats = rbinom(N_SAMPLES, 1, P_BUMPER)
+      num.bumpers = max(1, sum(sample.cats)) # TODO this fails if we end up with 0 bumpers, find out why
+      num.trials = N_SAMPLES - num.bumpers
+
       # fetch previous trials for magnitude comparison
-      prev.trials = sample.previous.trials(trial.i, single.subj.data)
+      prev.trials = sample.previous.trials(trial.i, single.subj.data, num.trials)
       # add in "bumpers" as if they were previous trials, then all logic below can treat them the same
-      prev.trials = sample.bumper.mappings(prev.trials)
+      prev.trials = sample.bumper.mappings(prev.trials, num.bumpers, MIN_ESTIMATE, MAX_ESTIMATE)
       
       # compare magnitude of trial.i to previous trial magnitudes
       # -> assumes both have a mean around the true number of dots, sd = PERCEIVED_DOTS_NOISE_SD
@@ -293,8 +318,6 @@ for (subj in SUBJ) {
       # Generate an estimate from the posterior 
       # -> (functions above for mean, median, probability matched sample, or MAP)
       estimate = ESTIMATE_FXN(posterior) # all estimate functions above take in posterior
-      # map = posterior.map(posterior)
-      # print(paste("MAP Estimate: ", map, ", p^l sample: ", estimate))
     }
     
     # add estimate to single subject results
@@ -313,7 +336,7 @@ for (subj in SUBJ) {
 ### ANALYSIS ###
 ################
 
-subject.data = SUBJ # set this variable to view individual subject data below
+subject.data = SUBJ[1] # set this variable to view individual subject data below
 
 # Quick view of true numbers and estimates across trials
 results = data %>%
@@ -327,13 +350,13 @@ results
 
 data %>% # single subject
   filter(subject == subject.data,
-         trial > N_TRIALS_CALIBRATION) %>%
+         trial > N_SAMPLES) %>%
   ggplot(aes(x = num_dots)) +
   geom_point(aes(y = answer, color = "subject"), alpha = 0.5) +
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.5) +
   geom_abline() +
-  geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
-  ggtitle(paste("Model estimates, calibration = ", N_TRIALS_CALIBRATION, " trial(s)")) +
+  #geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
@@ -345,13 +368,12 @@ data %>% # single subject
 
 
 data %>% # all subjects side by side
-  filter(trial > N_TRIALS_CALIBRATION) %>%
+  filter(trial > N_SAMPLES) %>%
   ggplot(aes(x = num_dots)) +
   geom_point(aes(y = answer, color = "subject"), alpha = 0.25, size = 0.5) +
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.25, size = 0.5) +
   geom_abline() +
-  geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
-  ggtitle(paste("Model estimates, calibration = ", N_TRIALS_CALIBRATION, " trial(s)")) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
@@ -371,12 +393,11 @@ data = data %>%
   mutate(quartile = floor(trial/75.25)+1)
 
 data %>% # all subjects side by side
-  filter(trial > N_TRIALS_CALIBRATION) %>%
+  filter(trial > N_SAMPLES) %>%
   ggplot(aes(x = num_dots, y = model.answer, color = as.factor(quartile))) +
   geom_point(alpha = 0.5, size = 0.5) +
   geom_abline() +
-  geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
-  ggtitle(paste("Model estimates, calibration = ", N_TRIALS_CALIBRATION, " trial(s)")) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
   labs(x = "Number presented", y = "Number estimated") +
   mylogx(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
   mylogy(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
@@ -395,7 +416,6 @@ data %>% # single subject
   geom_point(aes(y = log10(num_dots), color = "true number"), alpha = 0.5) +
   geom_point(aes(y = log10(model.answer), color = "model estimate"), alpha = 0.5) +
   geom_segment(aes(y = log10(num_dots), yend = log10(model.answer), xend = trial)) +
-  geom_hline(yintercept = log10(BUMPER_SET[BUMPER_SET <= 10]), linetype = "dashed") +
   ggtitle("Model estimates v. true numbers across trials") +
   labs(y = "Number of dots (log10)", x = "trial number") +
   scale_color_manual(name = "Estimates", 
@@ -412,7 +432,7 @@ posterior %>% # single subject, single trial
   ggplot(aes(x = number.est, y = posterior.norm)) + # plot posterior
   #ggplot(aes(x = number.est, y = loglik.probability.raw)) + # plot log likelihood
   geom_point() +
-  geom_vline(xintercept = BUMPER_SET, color = "blue", linetype = "dashed") +
+  #geom_vline(xintercept = BUMPER_SET, color = "blue", linetype = "dashed") +
   geom_vline(xintercept = estimate, color = "red", linetype = "dashed") +
   labs(x = "magnitude estimate") +
   xlim(1, 10) # modify this as needed
@@ -420,23 +440,9 @@ posterior %>% # single subject, single trial
 
 
 
-
-
-
-#' Analysis TODO 
-#' 
-#' claim 1. if you get to sample (whether from the identity line or from your previous trials as long as they’re reasonably accurate), you can do the mapping —> with fewer samples than you would expect
-#' 
-#' claim 2
-#' there’s a set of such models (or model conditions) that produce people’s underestimations
-#' - we need a procedure that produces human curves in euquilibrium (check the last N to make sure it still looks okay, try doing more than 300): human like mapping should come out not from the average but from steady state
-#' - “some combination of these samples and prior produces characteristic underestimation as samples drop and for the right L”
-#' 
-#' claim 3
-#' there’s a very simple class of such models (add in noisy distribution around the identity line during posterior calculation, use not too many samples) that drifts
-
-
-
+# TODO
+#' cleanup: remove globals from functions (only call functions with globals in main model?)
+#' find N_SAMPLES and P_BUMPER vals that support 3 claims (while keeping other params constant)
 
 
 

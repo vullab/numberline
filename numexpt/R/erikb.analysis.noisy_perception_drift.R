@@ -16,14 +16,13 @@ source('erikb.analysis.noisy_perception.R')
 #' numberline/numexpt/R/fit.models.2014-06-02.R
 #'  
 
-# TODO get this working for model estimates as well
 
 
 ###############
 ### GLOBALS ###
 ###############
 
-BLOCKSIZE = 30
+BLOCKSIZE = 30 # number of trials per block
 
 # Initialize priors
 PRIORS = list()
@@ -38,8 +37,7 @@ names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
 SUBJ_DATA = data # use processed participant data from erikb.analysis.noisy_perception.R 
 MODEL_DATA = data %>%
   select(subject, trial, num_dots, model.answer) %>%
-  # align column names to match participant data
-  rename(answer = model.answer)
+  rename(answer = model.answer) # align column names to match participant data
 
 
 #################
@@ -62,7 +60,7 @@ loglik = function(x, y, map.fx, a, b, s) {
   )
 }
 
-
+# Compute best fitting params for estimate data
 brutefit = function(tmp) {
   nLL = function(a, b, s) {
     -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10^s) + PRIORS[[1]](a) + PRIORS[[2]](b) + PRIORS[[3]](s)
@@ -91,19 +89,19 @@ brutefit = function(tmp) {
   return(fits)
 }
 
-
+# Util function used when fitting slopes: splits trial data into blocks
 splitBlock = function(trial, n, total.trials) {
   floor((trial - 1) / (total.trials / n))
 }
 
-
+# Util function used when calculating correlation matrix
 namedSlopes = function(x) {
   z = data.frame(x$b)
   rownames(z) = x$subject
   return(z)
 }
 
-
+# Util function used when calculating correlation matrix
 cbind.fill = function(...) {
   nm = list(...) 
   rnames = unique(unlist(lapply(nm, rownames)))
@@ -124,7 +122,7 @@ cbind.fill = function(...) {
   return(do.call(cbind, nm))
 }
 
-
+# Compute best fitting slopes for each participant x trial block of size `blocksizes` in `data`
 fit.slopes = function(blocksizes, data) {
   for (i in 1:length(blocksizes)) {
     n = blocksizes[i]

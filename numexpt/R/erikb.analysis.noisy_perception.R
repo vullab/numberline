@@ -28,7 +28,7 @@ DATA = "../data/"
 MIN_ESTIMATE = 1 # lowest number in the range of dots
 MAX_ESTIMATE = 1000 # highest number in the range of dots
 TRIALS = 300 # number of trials in the experiment (easier to set this as a global than compute it with e.g. max(trial))
-SUBJ = c(17) # sample representative participant(s)
+#SUBJ = c(17) # sample representative participant(s)
 SUBJ = seq(1:24) # sample representative participant(s)
 
 
@@ -92,24 +92,26 @@ sample.previous.trials = function(trial.i, single.subject.data, n.trials){
 
 # Sample "bumper" mappings by adding known magnitude -> number mappings to previous trials
 # that are being used for likelihood calculation
-sample.bumper.mappings = function(prev.trials, k_bumpers, bumper.min, bumper.max) {
-  # set of number mappings from which to sample bumpers
-  world_vals = data.frame("num" = seq(bumper.min, bumper.max))
-  world_vals$num.scaled = world_vals$num ^ BUMPER_EXP # TODO this is exponential but linearly decreasing in log sapce
-  world_vals$pnum = world_vals$num.scaled / sum(world_vals$num.scaled)
-  bumper_set = with(world_vals, sample(num, k_bumpers, prob = pnum, replace = F))
-  
-  bumper_samples = c() # sampled vaue of bumpers
-  for (bumper in bumper_set) {
-    bumper_samples = c(bumper_samples, round(10 ^ rnorm(1, log10(bumper), PERCEIVED_DOTS_NOISE_SD), digits = 0))
+sample.bumper.mappings = function(subj, prev.trials, k_bumpers, bumper.min, bumper.max) {
+  if (k_bumpers > 0) {
+    # set of number mappings from which to sample bumpers
+    world_vals = data.frame("num" = seq(bumper.min, bumper.max))
+    world_vals$num.scaled = world_vals$num ^ BUMPER_EXP # TODO this is exponential but linearly decreasing in log sapce
+    world_vals$pnum = world_vals$num.scaled / sum(world_vals$num.scaled)
+    bumper_set = with(world_vals, sample(num, k_bumpers, prob = pnum, replace = F))
+    
+    bumper_samples = c() # sampled vaue of bumpers
+    for (bumper in bumper_set) {
+      bumper_samples = c(bumper_samples, round(10 ^ rnorm(1, log10(bumper), PERCEIVED_DOTS_NOISE_SD), digits = 0))
+    }
+    
+    prev.trials = prev.trials %>%
+      add_row(subject = subj, # this gets passed in so we don't rely on previous trials if there are none
+              num.dots = bumper_set,
+              #model.answer = BUMPER_SET, # DEBUGGING make the bumpers exact
+              model.answer = bumper_samples,
+              bumper.trial = TRUE)
   }
-  
-  prev.trials = prev.trials %>%
-    add_row(subject = unique(prev.trials$subject),
-            num.dots = bumper_set,
-            #model.answer = BUMPER_SET, # DEBUGGING make the bumpers exact
-            model.answer = bumper_samples,
-            bumper.trial = TRUE)
   
   return(prev.trials)
 }
@@ -240,33 +242,9 @@ BUMPER_EXP = -4 # exponential slope parameter for sampling "bumper" values
 
 # hyperparams: number of samples and probability that samples are derived from real world bumpers
 N_SAMPLES = 25 # total number of samples to take from previous trials and "bumper" distribution
-P_BUMPER = 0.25 # probability p that a given sample comes from previous trials or real world "bumper" distribution
+P_BUMPER = 0.1 # probability p that a given sample comes from previous trials or real world "bumper" distribution
 
-#' Useful model params:
-#' Sensible *underestimation*
-#' -> ESTIMATE_FXN = posterior.sample.pl
-#' -> SAMPLE_EXP = 4
-#' 
-#' -> N_TRIALS_CALIBRATION = 10
-#' -> K_BUMPERS = 5
-#' -> BUMPER_EXP = -4 #NB: this must be fairly large negative int to produce underestimation
-#' 
-#' 
-#' Sensible *mapping*, few samples
-#' -> ESTIMATE_FXN = posterior.mean
-#' -> N_TRIALS_CALIBRATION = 2
-#' -> K_BUMPERS = 5 [equidistant]
-#' TODO deal with consistent overestimation here
-#' 
-#' Sensible *drift*
-#' The below produces a nice gradual loss of correlation similar to human data
-#' The challenge is getting the correlations to a suitably high level to start
-#' -> ESTIMATE_FXN = posterior.sample.pl
-#' -> N_TRIALS_CALIBRATION = 25 (increasing this reduces the corr, decreasing makes it more spotty w/o increasing corr)
-#' -> BUMPER_SET = c(1, 2, 3, 5, 10)
-#' -> SAMPLE_EXP = 4
-#' TODO fiddle with the bumpers: set them manually, etc. (since tweaking calibration trials doesn't help in either direction)
-#' 
+
 
 
 
@@ -295,13 +273,13 @@ for (subj in SUBJ) {
     } else {
       # get set of previous trials and real world bumpers to sample
       sample.cats = rbinom(N_SAMPLES, 1, P_BUMPER)
-      num.bumpers = max(1, sum(sample.cats)) # TODO this fails if we end up with 0 bumpers, find out why
+      num.bumpers = sum(sample.cats) # TODO this fails if we end up with 0 bumpers, find out why
       num.trials = N_SAMPLES - num.bumpers
 
       # fetch previous trials for magnitude comparison
       prev.trials = sample.previous.trials(trial.i, single.subj.data, num.trials)
       # add in "bumpers" as if they were previous trials, then all logic below can treat them the same
-      prev.trials = sample.bumper.mappings(prev.trials, num.bumpers, MIN_ESTIMATE, MAX_ESTIMATE)
+      prev.trials = sample.bumper.mappings(subj, prev.trials, num.bumpers, MIN_ESTIMATE, MAX_ESTIMATE)
       
       # compare magnitude of trial.i to previous trial magnitudes
       # -> assumes both have a mean around the true number of dots, sd = PERCEIVED_DOTS_NOISE_SD
@@ -356,7 +334,7 @@ data %>% # single subject
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.5) +
   geom_abline() +
   #geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
-  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
@@ -373,7 +351,7 @@ data %>% # all subjects side by side
   geom_point(aes(y = answer, color = "subject"), alpha = 0.25, size = 0.5) +
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.25, size = 0.5) +
   geom_abline() +
-  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
@@ -397,7 +375,7 @@ data %>% # all subjects side by side
   ggplot(aes(x = num_dots, y = model.answer, color = as.factor(quartile))) +
   geom_point(alpha = 0.5, size = 0.5) +
   geom_abline() +
-  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples")) +
+  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
   labs(x = "Number presented", y = "Number estimated") +
   mylogx(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
   mylogy(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
@@ -442,9 +420,25 @@ posterior %>% # single subject, single trial
 
 # TODO
 #' cleanup: remove globals from functions (only call functions with globals in main model?)
-#' find N_SAMPLES and P_BUMPER vals that support 3 claims (while keeping other params constant)
 
 
 
-
+#' NOTES 
+#' single subj
+#' n=10,p=.2: noisy underestimate everywhere
+#' n=10,p=.4: less noisy, less underestimate
+#' n=10,p=.6: less noisy, more characteristic underestimation
+#' n=10,p=.8: noisy again, maybe too characteristic underestimation
+#' 
+#' n=20,p=.1: under at low numbers, over at high: doesn't look like people or very good mapping
+#' n=20,p=.2: close to identity line
+#' n=20,p=.4: close to identity line, more noise at high number (over and under)
+#' n=20,p=.6: close to identity line, more noise at high numbers (similar to p=.4)
+#' n=20,p=.8: little closter to identity line at slightly higher numbers
+#' 
+#' Summary: when N is high (e.g. 20+), it's only interesting if P is low (otherwise we just have many bumpers)
+#' 
+#' all subj: the above doesn't seem to generalize super well to all subjects
+#' n=15,p=.4: pretty good underestimation (lower Ns are pretty scattered, higher Ps are very noisy at high numbers)
+#' 
 

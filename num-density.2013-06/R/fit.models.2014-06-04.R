@@ -1,6 +1,5 @@
 # fit power and bipower models, generate curves.
 
-setwd('~/PROJECTS/number-line/numexpt/R/')
 rm(list=ls())
 
 source('~/CODE/R/utilities.R')
@@ -8,6 +7,7 @@ library(stats4)
 
 
 ## load all data and clean up format.
+# NB: ignore this, use `load.density.data.R`
 files <- list.files('../data/')
 dat <- data.frame()
 subject <- 1
@@ -17,6 +17,7 @@ for(f in files){
   dat <- rbind(dat, q)
   subject <- subject+1
 }
+
 to.num <- function(x){as.numeric(as.character(x))}
 dat$run <- to.num(dat$run)
 dat$index <- to.num(dat$index)

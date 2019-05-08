@@ -235,14 +235,14 @@ ESTIMATE_FXN = posterior.sample.pl
 POSTERIOR_SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with probability p^l
 
 # params for sample of previous trials
-TRIALS_EXP = -4 # explonential slope parameter for sampling previous trials
+TRIALS_EXP = -1 # explonential slope parameter for sampling previous trials
 
 # params for sample of real world "bumpers"
 BUMPER_EXP = -4 # exponential slope parameter for sampling "bumper" values
 
 # hyperparams: number of samples and probability that samples are derived from real world bumpers
-N_SAMPLES = 25 # total number of samples to take from previous trials and "bumper" distribution
-P_BUMPER = 0.1 # probability p that a given sample comes from previous trials or real world "bumper" distribution
+N_SAMPLES = 20 # total number of samples to take from previous trials and "bumper" distribution
+P_BUMPER = 0.9 # probability p that a given sample comes from previous trials or real world "bumper" distribution
 
 
 
@@ -314,6 +314,7 @@ for (subj in SUBJ) {
 ### ANALYSIS ###
 ################
 
+### SINGLE SUBJECT ### 
 subject.data = SUBJ[1] # set this variable to view individual subject data below
 
 # Quick view of true numbers and estimates across trials
@@ -322,9 +323,6 @@ results = data %>%
   select(subject, trial, num_dots, model.answer) %>%
   arrange(trial)
 results
-
-
-# validating model estimates
 
 data %>% # single subject
   filter(subject == subject.data,
@@ -344,7 +342,36 @@ data %>% # single subject
         plot.title = element_text(size = 20, face = "bold"),
         legend.position = "bottom")
 
+# Understanding over- and under-estimation (line segments show difference between num.dots and estimate)
+data %>% # single subject
+  filter(subject == subject.data) %>%
+  ggplot(aes(x = trial)) +
+  geom_point(aes(y = log10(num_dots), color = "true number"), alpha = 0.5) +
+  geom_point(aes(y = log10(model.answer), color = "model estimate"), alpha = 0.5) +
+  geom_segment(aes(y = log10(num_dots), yend = log10(model.answer), xend = trial)) +
+  ggtitle("Model estimates v. true numbers across trials") +
+  labs(y = "Number of dots (log10)", x = "trial number") +
+  scale_color_manual(name = "Estimates", 
+                     values = c("true number" = "blue", "model estimate" = "red")) +
+  theme(axis.title = element_text(size = 16, face = "bold"),
+        plot.title = element_text(size = 20, face = "bold"),
+        legend.position = "bottom")
 
+# DEBUGGING validating log likelihood and posterior for individual estimates
+posterior %>% # single subject, single trial
+  #filter(number.est <= 10) %>%
+  ggplot(aes(x = number.est, y = posterior.norm)) + # plot posterior
+  #ggplot(aes(x = number.est, y = loglik.probability.raw)) + # plot log likelihood
+  geom_point() +
+  #geom_vline(xintercept = BUMPER_SET, color = "blue", linetype = "dashed") +
+  geom_vline(xintercept = estimate, color = "red", linetype = "dashed") +
+  labs(x = "magnitude estimate") +
+  xlim(1, 10) # modify this as needed
+
+
+
+
+### ALL SUBJECTS ### 
 data %>% # all subjects side by side
   filter(trial > N_SAMPLES) %>%
   ggplot(aes(x = num_dots)) +
@@ -366,9 +393,9 @@ data %>% # all subjects side by side
 
 
 
-# Compare each third of model estimates to make sure it's not getting worse
+# Compare each quartile of model estimates to make sure it's not getting worse
 data = data %>%
-  mutate(quartile = floor(trial/75.25)+1)
+  mutate(quartile = floor(trial / 75.25) + 1)
 
 data %>% # all subjects side by side
   filter(trial > N_SAMPLES) %>%
@@ -387,58 +414,23 @@ data %>% # all subjects side by side
   facet_wrap(~subject, ncol = 6)
   
 
-# Understanding over- and under-estimation (line segments show difference between num.dots and estimate)
-data %>% # single subject
-  filter(subject == subject.data) %>%
-  ggplot(aes(x = trial)) +
-  geom_point(aes(y = log10(num_dots), color = "true number"), alpha = 0.5) +
-  geom_point(aes(y = log10(model.answer), color = "model estimate"), alpha = 0.5) +
-  geom_segment(aes(y = log10(num_dots), yend = log10(model.answer), xend = trial)) +
-  ggtitle("Model estimates v. true numbers across trials") +
-  labs(y = "Number of dots (log10)", x = "trial number") +
-  scale_color_manual(name = "Estimates", 
-                     values = c("true number" = "blue", "model estimate" = "red")) +
-  theme(axis.title = element_text(size = 16, face = "bold"),
-        plot.title = element_text(size = 20, face = "bold"),
-        legend.position = "bottom")
 
 
+# calculate MSE for model, subjects
+data = data %>%
+  mutate(subj.sq.error = (answer - num_dots) ^ 2,
+         model.sq.error = (model.answer - num_dots) ^ 2)
+mean(data$subj.sq.error)
+mean(data$model.sq.error[data$trial>N_SAMPLES])
 
-# validating log likelihood and posterior for individual estimates
-posterior %>% # single subject, single trial
-  #filter(number.est <= 10) %>%
-  ggplot(aes(x = number.est, y = posterior.norm)) + # plot posterior
-  #ggplot(aes(x = number.est, y = loglik.probability.raw)) + # plot log likelihood
-  geom_point() +
-  #geom_vline(xintercept = BUMPER_SET, color = "blue", linetype = "dashed") +
-  geom_vline(xintercept = estimate, color = "red", linetype = "dashed") +
-  labs(x = "magnitude estimate") +
-  xlim(1, 10) # modify this as needed
 
 
 
 
 # TODO
 #' cleanup: remove globals from functions (only call functions with globals in main model?)
+#' make function to run model that takes in N, P, other params
+#' -> Run this function for a series of N values (fixed P) and output MSE for subj and model to a data frame for graphing subject/model MSE
 
 
-
-#' NOTES 
-#' single subj
-#' n=10,p=.2: noisy underestimate everywhere
-#' n=10,p=.4: less noisy, less underestimate
-#' n=10,p=.6: less noisy, more characteristic underestimation
-#' n=10,p=.8: noisy again, maybe too characteristic underestimation
-#' 
-#' n=20,p=.1: under at low numbers, over at high: doesn't look like people or very good mapping
-#' n=20,p=.2: close to identity line
-#' n=20,p=.4: close to identity line, more noise at high number (over and under)
-#' n=20,p=.6: close to identity line, more noise at high numbers (similar to p=.4)
-#' n=20,p=.8: little closter to identity line at slightly higher numbers
-#' 
-#' Summary: when N is high (e.g. 20+), it's only interesting if P is low (otherwise we just have many bumpers)
-#' 
-#' all subj: the above doesn't seem to generalize super well to all subjects
-#' n=15,p=.4: pretty good underestimation (lower Ns are pretty scattered, higher Ps are very noisy at high numbers)
-#' 
 

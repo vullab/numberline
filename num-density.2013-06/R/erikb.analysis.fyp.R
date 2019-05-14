@@ -113,7 +113,11 @@ cbind.fill = function(...) {
   return(do.call(cbind, nm))
 }
 
-
+shuffle.data = function(dat) {
+  dat %>%
+    group_by(subject) %>%
+    mutate(trial = sample(trial, length(trial), replace = F))
+}
 
 
 # Graphing functions
@@ -160,10 +164,30 @@ mylogx = function(lims){
 }
 
 mylogy = function(lims){
-  breaks <- my.log.breaks(lims)
+  breaks = my.log.breaks(lims)
   scale_y_log10(limits = lims, 
                 breaks = 10 ^ breaks[[1]], 
                 minor_breaks = breaks[[2]])
+}
+
+# Function for creating ggplot with block x block slope correlation matrices
+# NB: we make six of these so it's easiest to make this a function
+create.correlation.matrix = function(name, color, data) {
+  plot = ggplot(subset(data, data$type == name), 
+                aes(x = as.factor(Block1), y = as.factor(Block2), 
+                    fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
+    geom_tile() + 
+    geom_text(size = 5) +
+    scale_fill_gradient2(low = "white", mid = "white", high = color, midpoint = 0, limits = c(-1, 1)) +
+    xlab("") +
+    ylab("") +
+    ggtitle(size.size.label) +
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_discrete(expand = c(0, 0)) +
+    matrix_plot_theme +
+    theme(plot.title = element_text(face = "bold", size = 32, color = color))
+  
+  return(plot)
 }
 
 # theme
@@ -257,6 +281,13 @@ MODALITIES = unique(dat$vary)
 glimpse(dat)
 length(unique(dat$subject))
 
+### SHUFFLING: don't run this unless shuffling!! ###
+# shuffle trial order by participant
+# dat = shuffle.data(dat)
+# check that it worked
+table(dat$trial)
+glimpse(dat)
+
 # Drop outliers
 rs = rbind(by(dat, dat$subject, function(tmp){cor(tmp$num_dots, tmp$answer, method = "spearman")}))
 dat = dat[!(dat$subject %in%  which(rs < COR_THRESHOLD)),] # drop subjects w/ less than COR_THRESHOLD correlation with true num_dots
@@ -269,6 +300,7 @@ ns
 # TODO what's going on with these outliers?? did people really guess 34,000??
 tmp = order(dat$answer, decreasing = T)
 tmp[1:8]
+
 # also why doesn't this show up in the above?
 max(dat$answer)
 dat[dat$answer == max(dat$answer),]
@@ -289,32 +321,47 @@ ggplot(sdat, aes(x = num_dots, y = answer)) +
   xlab("Number presented") +
   ylab("Number reported") +
   facet_wrap(~subject, ncol = 3) +
-  individ_plot_theme
+  individ_plot_theme 
 
 
 
 ### FIGURE: PERFORMANCE BY MODALITY ###
 
 # Get median reported answers across log-equidistant blocks of number presented (for each modality)
-cuts = c(9.5:20.5, 10 ^ seq(log10(21.5), log10(MAX_PRESENTED), length.out = 20)) # TODO clarify what's happening here
+# 10 equidistant buckets within accurate estimate range, 20 buckets equidistant in log space
+cuts = c(9.5:20.5, 10 ^ seq(log10(21.5), log10(MAX_PRESENTED), length.out = 20))
 summary.stats = data.frame()
 for (i in 1:length(MODALITIES)) {
   sdat = subset(dat, dat$vary == MODALITIES[i])
   sdat$bin = cut(sdat$num_dots, breaks = cuts, labels = seq_len(length(cuts) - 1), include.lowest = T)
-  truens = cbind(by(sdat$num_dots, sdat$bin, median))
-  medians = cbind(by(sdat$answer, sdat$bin, median))
+  truens = cbind(by(sdat$num_dots, sdat$bin, median)) # median true number presented in this range
+  medians = cbind(by(sdat$answer, sdat$bin, median)) # median estimate in this range
   acc = cbind(by(sdat, sdat$bin, function(tmp){mean(tmp$num_dots == tmp$answer)}))
   summary.stats = rbind(summary.stats,
              data.frame(truens = truens[,1],
                         medians = medians[,1],
-                        block = rep(MODALITIES[i], length(acc[,1]))))
+                        vary = rep(MODALITIES[i], length(acc[,1]))))
 }
 
+# Test whether line fit to bilinear portion of each modality is different across modalities
+model.medians.null = lm(data = summary.stats[summary.stats$truens > 20,], medians ~ truens)
+summary(model.medians.null)
+anova(model.medians.null)
+
+# model.medians.int = lmer(data = summary.stats[summary.stats$truens > 20,], medians ~ truens + truens:vary + (1|vary))
+model.medians.int = lm(data = summary.stats[summary.stats$truens > 20,], medians ~ truens + truens:vary)
+summary(model.medians.int)
+anova(model.medians.int)
+
+anova(model.medians.null, model.medians.int)
+
+# Plot median estimates across modalities
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(colour = "blue", size = 2, alpha = 0.05) +
   geom_point(data = summary.stats, aes(x = truens, y = medians), color = "red", size = 2) +
   geom_line(data = summary.stats, aes(x = truens, y = medians), color = "red", size = 1) +
   geom_abline(position = "identity") +
+  # geom_vline(aes(xintercept = 40)) + # check where underestimation begins
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
@@ -338,6 +385,7 @@ dat$mod[dat$block == (length(trialcuts) - 2)] = (length(trialcuts) - 2)
 fitsBlock = list()
 fitsMod = list() # NB: we only use fitsMod for final plot
 
+# NB: this takes several minutes
 for (i in 1:length(MODALITIES)) {
   fitsBlock[[MODALITIES[i]]] = list() # create list of best fitting slopes for trials from each modality
   for (k in 0:(length(trialcuts) - 2)) { # TODO why the -2?
@@ -358,6 +406,7 @@ for (i in 1:length(MODALITIES)) {
 # Validating the fits above
 fitsBlock[["size"]][[13]] # best fitting slopes by subject for block 13 of "size" trials
 fitsBlock[["density"]][[13]]
+summary(fitsBlock[["size"]][[10]][['b']])
 
 
 # Get slope correlation matrix
@@ -368,6 +417,7 @@ mconf = data.frame("Type" = character(), "Block1" = numeric(), "Block2" = numeri
 for (i in 1:length(MODALITIES)) {
   R[[MODALITIES[i]]] = list() # make separate slope correlations for each trial type
   for (j in i:length(MODALITIES)) {
+    # get slopes for n participant rows by m trial blocks in modality i or j
     s1 = do.call(cbind.fill, lapply(fitsBlock[[MODALITIES[i]]], namedSlopes))
     s2 = do.call(cbind.fill, lapply(fitsBlock[[MODALITIES[j]]], namedSlopes))
     # get confint on correlation
@@ -379,6 +429,7 @@ for (i in 1:length(MODALITIES)) {
                                "Lower.conf" = conf[1], "Upper.conf" = conf[2]))
       }
     }
+    # R[[MODALITIES[i]]][[MODALITIES[j]]] is m blocks by m blocks pairwise slope correlations (n pairwise participant observations)
     R[[MODALITIES[i]]][[MODALITIES[j]]] = cor(s1, s2, use = "pairwise.complete.obs")
     rownames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
     colnames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
@@ -391,8 +442,8 @@ for (i in 1:length(MODALITIES)) {
     s1 = do.call(cbind.fill, lapply(fitsMod[[MODALITIES[i]]], namedSlopes))
     s2 = do.call(cbind.fill, lapply(fitsMod[[MODALITIES[j]]], namedSlopes))
     Rr[[MODALITIES[i]]][[MODALITIES[j]]] = cor(s1, s2, use = "pairwise.complete.obs")
-    rownames(Rr[[MODALITIES[i]]][[MODALITIES[j]]]) <- c()
-    colnames(Rr[[MODALITIES[i]]][[MODALITIES[j]]]) <- c()
+    rownames(Rr[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
+    colnames(Rr[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
   }
 }
 names(mcor) = c("Block1", "Block2", "Correlation", "type")
@@ -403,39 +454,63 @@ mcor
 levels(as.factor(mcor$type))
 
 
-# Plot
-blocks = 0:11
-ggplot() +
-  geom_point(aes(x = blocks, y = get.slope.cors(R, "size", "density"), color = "size-density"), size = 2) +
-  geom_line(aes(x = blocks, y = get.slope.cors(R, "size", "density"), color = "size-density"), size = 1) +
-  geom_errorbar(aes(x = blocks, 
-                    ymin = get.slope.conf(mconf, "size", "density")$lower,
-                    ymax = get.slope.conf(mconf, "size", "density")$upper,
-                    color = "size-density"),
-                width = 0.25, size = 1) +
-  geom_point(aes(x = blocks, y = get.slope.cors(R, "size", "area"), color = "size-area"), size = 2) +
-  geom_line(aes(x = blocks, y = get.slope.cors(R, "size", "area"), color = "size-area"), size = 1) +
-  geom_errorbar(aes(x = blocks, 
-                    ymin = get.slope.conf(mconf, "size", "area")$lower,
-                    ymax = get.slope.conf(mconf, "size", "area")$upper,
-                    color = "size-area"),
-                width = 0.25, size = 1) +
-  geom_point(aes(x = blocks, y = get.slope.cors(R, "density", "area"), color = "density-area"), size = 2) +
-  geom_line(aes(x = blocks, y = get.slope.cors(R, "density", "area"), color = "density-area"), size = 1) +
-  geom_errorbar(aes(x = blocks, 
-                    ymin = get.slope.conf(mconf, "density", "area")$lower,
-                    ymax = get.slope.conf(mconf, "density", "area")$upper,
-                    color = "density-area"),
+# Make data frame with each comparison, slope correlations and confidence intervals per block
+# based on R calculated above
+slope.cors = data.frame('comparison' = character(),
+                        'block' = numeric(),
+                        'corr' = numeric(),
+                        'conf.lower' = numeric(),
+                        'conf.upper' = numeric())
+
+for (i in 1:length(MODALITIES)) {
+  for (j in i:length(MODALITIES)) {
+    comp = paste(MODALITIES[[i]], MODALITIES[[j]], sep = "-")
+    blocks = 0:11
+    corr = get.slope.cors(R, MODALITIES[[i]], MODALITIES[[j]])
+    conf = get.slope.conf(mconf, MODALITIES[[i]], MODALITIES[[j]])
+    slope.cors = rbind(slope.cors, data.frame('comparison' = comp,
+                                              'block' = blocks,
+                                              'corr' = corr,
+                                              'conf.lower' = conf$lower,
+                                              'conf.upper' = conf$upper))
+  }
+}
+
+slope.cors.comparison = slope.cors %>%
+  filter(comparison %in% c("density-area", "size-area", "size-density"))
+
+# Plot slope correlations by block
+slope.cors.comparison %>%
+  ggplot(aes(x = block, y = corr, color = comparison)) +
+  geom_point(size = 2) +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = conf.lower,
+                    ymax = conf.upper),
                 width = 0.25, size = 1) +
   ggtitle("Slope correlations by trial block") +
   ylab("Correlation") + 
   xlab("Block") + 
   scale_x_continuous(breaks = blocks, minor_breaks = c()) +
-  scale_y_continuous(limits = c(-0.2, 1), breaks = seq(-0.2, 1, by = 0.2)) +
+  scale_y_continuous(limits = c(-0.25, 1), breaks = seq(-0.2, 1, by = 0.2)) +
   corr_plot_theme +
   scale_color_manual(name = "slope comparison",
                      values = c("size-density" = "red", "size-area" = "blue", "density-area" = "green4"),
                      labels = c("size-density" = "size-density", "size-area" = "size-area", "density-area" = "density-area"))
+
+# Model to compare slopes
+# slope.cors.comparison = slope.cors.comparison %>% filter(block > 0)
+mod.corrs.across = lm(data = slope.cors.comparison, corr ~ block * comparison)
+mod.corrs.across = lm(data = slope.cors.comparison, corr ~ block + block:comparison)
+summary(mod.corrs.across)
+anova(mod.corrs.across) # interaction term is not significant
+
+mod.corrs.across.null = lm(data = slope.cors.comparison, corr ~ block)
+summary(mod.corrs.across)
+
+#' In an anova model comparison, a model that includes an interaction between block and comparison
+#' is no better than a model that only includes block
+anova(mod.corrs.across.null, mod.corrs.across) 
+
 
 
 ### FIGURE: SLOPE CORRELATION MATRICES, ALL COMPARISONS ###
@@ -449,94 +524,18 @@ s = 1.5
 
 
 size.size.label = "size-size"
-size.size = ggplot(subset(mcor, mcor$type == size.size.label), 
-                   aes(x = as.factor(Block1), y = as.factor(Block2), 
-                       fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid = "white", high = rgb(r, 0, 0), midpoint = 0, limits=c(-1, 1)) +
-  xlab("") +
-  ylab("") +
-  ggtitle(size.size.label) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) +
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(r, 0, 0)))
-
+size.size = create.correlation.matrix(size.size.label, rgb(r, 0, 0), mcor)
 density.density.label = "density-density"
-density.density = ggplot(subset(mcor, mcor$type == density.density.label), 
-                     aes(x = as.factor(Block1), y = as.factor(Block2), 
-                         fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid = "white", high = rgb(0, g, 0), midpoint = 0, limits = c(-1, 1)) +
-  xlab("") +
-  ylab("") +
-  ggtitle(density.density.label) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(0, g, 0)))
-
+density.density = create.correlation.matrix(density.density.label, rgb(0, g, 0), mcor)
 area.area.label = "area-area"
-area.area = ggplot(subset(mcor, mcor$type == area.area.label), 
-                   aes(x = as.factor(Block1), y = as.factor(Block2), 
-                       fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid = "white", high = rgb(0, 0, b), midpoint = 0, limits = c(-1, 1)) +
-  xlab("") +
-  ylab("") +
-  ggtitle(area.area.label) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(0, 0, b)))
+area.area = create.correlation.matrix(area.area.label, rgb(0, 0, b), mcor)
 
 size.density.label = "size-density"
-size.density = ggplot(subset(mcor, mcor$type == size.density.label), 
-                      aes(x = as.factor(Block1), y = as.factor(Block2), 
-                          fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid = "white", high = rgb(r/s, g/s, 0), midpoint = 0, limits = c(-1, 1)) +
-  xlab("") +
-  ylab("") +
-  ggtitle(size.density.label) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(r/s, g/s, 0)))
-
+size.density = create.correlation.matrix(size.density.label, rgb(r / s, g / s, 0), mcor)
 size.area.label = "size-area"
-size.area = ggplot(subset(mcor, mcor$type == size.area.label), 
-                   aes(x = as.factor(Block1), y = as.factor(Block2), 
-                       fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid ="white", high = rgb(r/s, 0, b/s), midpoint = 0, limits = c(-1, 1)) + 
-  xlab("") +
-  ylab("") +
-  ggtitle(size.area.label) +
-  scale_x_discrete(expand = c(0,0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(r/s, 0, b/s)))
-
+size.area = create.correlation.matrix(size.area.label, rgb(r / s, 0, b / s), mcor)
 density.area.label = "density-area"
-density.area = ggplot(subset(mcor, mcor$type == density.area.label), 
-                      aes(x = as.factor(Block1), y = as.factor(Block2), 
-                          fill = Correlation, label = sprintf("%0.2f", Correlation))) + 
-  geom_tile() + 
-  geom_text(size = 5) +
-  scale_fill_gradient2(low = "white", mid = "white", high = rgb(0, g/s, b/s), midpoint = 0, limits = c(-1, 1)) +
-  xlab("") +
-  ylab("") +
-  ggtitle(density.area.label) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) + 
-  matrix_plot_theme +
-  theme(plot.title = element_text(face = "bold", size = 32, color = rgb(0, g/s, b/s)))
+density.area = create.correlation.matrix(density.area.label, rgb(0, g / s, b / s), mcor)
 
 multiplot(size.size, density.density, area.area, size.density, size.area, density.area, cols = 2)
 
@@ -547,8 +546,6 @@ multiplot(size.size, density.density, area.area, size.density, size.area, densit
 # as well as the Rr matrix
 
 
-# TODO what's going on here???
-fullD = data.frame()
 ds = 1:10
 df = NULL
 dfr = NULL
@@ -557,10 +554,11 @@ for (i in 1:length(MODALITIES)) {
     t = gettcor(i, j, R)
     t$distances = ds * 50
     t$type = paste(MODALITIES[i], MODALITIES[j], sep = "-")
-    t2 = gettcor(i, j, Rr) 
-    t$nmu = t$mu / t2$mu
-    t$nll = t$ll / t2$mu
-    t$nul = t$ul / t2$mu
+    t2 = gettcor(i, j, Rr)
+    # normalize by modular correlations to correct for overall lower correlations when the sample size is smaller for smaller set sizes
+    t$nmu = t$mu #/ t2$mu
+    t$nll = t$ll #/ t2$mu
+    t$nul = t$ul #/ t2$mu
     df = rbind(df, t)
     t2$distances = ds * 50 # NB: switched this from 'distances * 50' to match above
     t2$type = paste(MODALITIES[i], MODALITIES[j], sep = "-")
@@ -585,10 +583,50 @@ ggplot(data = df) +
                       values = c(rgb(r, 0, 0), rgb(0, g, 0), rgb(0, 0, b), 
                                  rgb(r/s, g/s, 0), rgb(r/s, 0, b/s), rgb(0, g/s, b/s))) +
   scale_x_continuous(breaks = ds * 50, minor_breaks = c()) +
-  scale_y_continuous(limits = c(0, 1.1), breaks = seq(0, 1.1, by = 0.1), minor_breaks = c()) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1), minor_breaks = c()) +
   ylab("Correlation") + 
   xlab("Distance (trials)") + 
   ggtitle("Slope correlations by trial distance") +
   theme(legend.position = "bottom") +
   corr_plot_theme
   
+
+#' Analysis (FOR SHUFFLED DATA ONLY)
+#' Check that slopes of regressions fit to each correlation line are all ~0
+glimpse(df)
+df$dist = df$distances / 50 # get back to trial blocks so slopes are more meaningful
+for (i in 1:length(MODALITIES)) {
+  for (j in i:length(MODALITIES)) {
+    currtype = paste(MODALITIES[i], MODALITIES[j], sep = "-")
+    subset = df[df$type == currtype,]
+    print(currtype)
+    mod = lm(data = subset, nmu ~ dist)
+    print(summary(mod))
+    print(confint.lm(mod))
+  }
+}
+# these fitted slopes are all highly significant (and very similar) for normal data
+# for shuffled data, none are significantly different from 0
+
+
+#' Analysis: check that slope of each line is not significantly different from each other
+#' ANOVA model comparison for model that just fits correlation by distance (null) and model
+#' that fits correlation by distance * comparison
+
+# mod.corrs.distance = lm(data = df, mu ~ distances * type)
+mod.corrs.distance = lm(data = df, mu ~ distances + distances:type)
+summary(mod.corrs.distance)
+anova(mod.corrs.distance) # the interaction term is significant
+
+mod.corrs.distance.null = lm(data = df, mu ~ distances)
+summary(mod.corrs.distance.null)
+
+anova(mod.corrs.distance.null, mod.corrs.distance)
+# Model with interaction between distance and comparison is significantly better than model
+# with just distance
+
+
+
+
+
+

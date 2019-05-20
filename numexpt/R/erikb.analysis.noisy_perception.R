@@ -37,7 +37,7 @@ SUBJ = seq(1:24) # sample representative participant(s)
 #################
 
 # Data reading
-read.data = function(filepath) {
+read.data = function(filepath, n.trials) {
   # read data
   files = list.files(filepath)
   data = data.frame()
@@ -64,7 +64,7 @@ read.data = function(filepath) {
   data$answer = 10 ^ (log10(pmax(1, data$answer1)) / 2 + log10(pmax(1, data$answer2)) / 2) # blended average of participant answers for this array
   data$trial = 0
   for (s in unique(data$subject)) {
-    data$trial[data$subject == s] = 1:TRIALS
+    data$trial[data$subject == s] = 1:n.trials
   }
   data$model.answer = 0
   data$bumper.trial = FALSE
@@ -74,16 +74,16 @@ read.data = function(filepath) {
 
 
 
-# Sample previous trials based on exponential decay function with slope TRIALS_EXP
-sample.previous.trials = function(trial.i, single.subject.data, n.trials){
+# Sample previous trials based on exponential decay function with slope trials.exp
+sample.previous.trials = function(trial.i, single.subject.data, n.trials, trials.exp){
   # set of number mappings from which to sample bumpers
   trial_set = data.frame("sub_index" = seq(1, trial.i - 1)) # number of trials *back* from current trial to sample
-  trial_set$sub_index.scaled = trial_set$sub_index ^ TRIALS_EXP # TODO this is exponential but linearly decreasing in log sapce
+  trial_set$sub_index.scaled = trial_set$sub_index ^ trials.exp # TODO this is exponential but linearly decreasing in log sapce
   trial_set$ptrial_sub = trial_set$sub_index.scaled / sum(trial_set$sub_index.scaled)
   prev.trial.sub.indices = sort(with(trial_set, sample(sub_index, n.trials, prob = ptrial_sub, replace = F)))
   
   # get only trials m indices prior to trial.i for m in prev.trial.sub.indices
-  prev.trials = single.subj.data %>%
+  prev.trials = single.subject.data %>%
     filter(trial %in% (trial.i - prev.trial.sub.indices))
   
   return(prev.trials)
@@ -92,17 +92,17 @@ sample.previous.trials = function(trial.i, single.subject.data, n.trials){
 
 # Sample "bumper" mappings by adding known magnitude -> number mappings to previous trials
 # that are being used for likelihood calculation
-sample.bumper.mappings = function(subj, prev.trials, k_bumpers, bumper.min, bumper.max) {
+sample.bumper.mappings = function(subj, prev.trials, k_bumpers, bumper.min, bumper.max, bumper.exp, mag.sd) {
   if (k_bumpers > 0) {
     # set of number mappings from which to sample bumpers
     world_vals = data.frame("num" = seq(bumper.min, bumper.max))
-    world_vals$num.scaled = world_vals$num ^ BUMPER_EXP # TODO this is exponential but linearly decreasing in log sapce
+    world_vals$num.scaled = world_vals$num ^ bumper.exp
     world_vals$pnum = world_vals$num.scaled / sum(world_vals$num.scaled)
     bumper_set = with(world_vals, sample(num, k_bumpers, prob = pnum, replace = F))
     
     bumper_samples = c() # sampled vaue of bumpers
     for (bumper in bumper_set) {
-      bumper_samples = c(bumper_samples, round(10 ^ rnorm(1, log10(bumper), PERCEIVED_DOTS_NOISE_SD), digits = 0))
+      bumper_samples = c(bumper_samples, round(10 ^ rnorm(1, log10(bumper), mag.sd), digits = 0))
     }
     
     prev.trials = prev.trials %>%
@@ -118,25 +118,25 @@ sample.bumper.mappings = function(subj, prev.trials, k_bumpers, bumper.min, bump
 
 
 # calculate log likelihood using magnitudes and number estimates from previous trials
-calculate.loglik = function(prev.trials) {
+calculate.loglik = function(prev.trials, n.samples, min.est, max.est) {
   # matrix of number estimates initialized for use in calculation of likelihoods in loop below
   # NB: this matrix A doesn't need to be created every time we call this function but it doesn't slow it down much
   # so I'm keeping it here for compactness
-  A = matrix(rep(1:MAX_ESTIMATE, each = N_SAMPLES), nrow = N_SAMPLES)
+  A = matrix(rep(min.est:max.est, each = n.samples), nrow = n.samples)
   
   # discretize possible answer estimates, set log likelihood at each value to be either p.mag.greater or 1 - p.mag.greater
   # use matrix with a row for each of the previous trials and a column for each candidate estimate value.
   # each row, col element in X will be the log likelihood that the magnitude on the current trial maps to the column value, given the magnitude 
   #   and corresponding estimate in that row's trial
-  X = matrix(0, nrow = N_SAMPLES, ncol = MAX_ESTIMATE) # Initialize matrix for storing log likelihoods
+  X = matrix(0, nrow = n.samples, ncol = max.est) # Initialize matrix for storing log likelihoods
   # matrix storing proability in each col that magnitude on this trial is < magnitude in trial indicated by that row
-  P = matrix(rep(1 - prev.trials$p.mag.greater[1:(N_SAMPLES)], MAX_ESTIMATE), nrow = N_SAMPLES)
+  P = matrix(rep(1 - prev.trials$p.mag.greater[1:(n.samples)], max.est), nrow = n.samples)
   # matrix storing numerical estimate generated for each previous trial
-  B = matrix(rep(floor(prev.trials$model.answer[1:(N_SAMPLES)]), MAX_ESTIMATE), nrow = N_SAMPLES)
+  B = matrix(rep(floor(prev.trials$model.answer[1:(n.samples)]), max.est), nrow = n.samples)
   X[A <= B] = log10(P[A <= B]) # NB: if we switch this to < and the next line to >=, it makes a big diff, not totally clear why
   X[A > B] = log10(1 - P[A > B])
   # across each previous trial that we've calculated a log likelihood vector for above, calculate aggregate likelihood for estimates
-  loglik = data.frame('number.est' = seq(MIN_ESTIMATE:MAX_ESTIMATE), 'sum.loglik' = colSums(X))
+  loglik = data.frame('number.est' = seq(min.est:max.est), 'sum.loglik' = colSums(X))
   
   # process log likelihood calculated above
   loglik = loglik %>%
@@ -150,9 +150,9 @@ calculate.loglik = function(prev.trials) {
 
 # calculate posterior by taking in log likelihood data, assuming power law prior
 # NB: this can be modified to make different assumptions about the prior
-calculate.posterior = function(loglik) {
+calculate.posterior = function(loglik, prior.exp) {
   posterior = loglik %>%
-    mutate(prior = number.est ^ PRIOR_EXP, # assume power law probability of seeing a particular number
+    mutate(prior = number.est ^ prior.exp, # assume power law probability of seeing a particular number
            prior.norm = prior / sum(prior), # normalize
            posterior.raw = loglik.probability.raw * prior.norm, # multiply loglik by the prior
            posterior.norm = posterior.raw / sum(posterior.raw)) # normalize
@@ -194,32 +194,139 @@ posterior.median = function(posterior) {
 # this is a function for sampling according to p^l for some l
 # posterior.sample is a special case of this function where l=1
 # higher l will sample closer to MAP, lower l will be closer to mean
-posterior.sample.pl = function(posterior) {
-  post.sample = with(posterior, sample(number.est, 1, prob = (posterior.raw ^ POSTERIOR_SAMPLE_EXP)))
+posterior.sample.pl = function(posterior, sample.exp) {
+  post.sample = with(posterior, sample(number.est, 1, prob = (posterior.raw ^ sample.exp)))
   return(post.sample)
+}
+
+calculate.mse = function(data) {
+  data = data %>%
+    mutate(subj.sq.error = (answer - num_dots) ^ 2,
+           model.sq.error = (model.answer - num_dots) ^ 2)
+  
+  return(data)
 }
 
 # Graphing functions
 my.log.breaks = function(lims){
   majors = seq(floor(log10(lims[1])), ceiling(log10(lims[2])), by = 1)
-  minors = log10(unlist(lapply(majors[-1], function(x){seq(10^(x - 1), 9 * 10^(x - 1), by = 10^(x - 1))})))
+  minors = log10(unlist(lapply(majors[-1], function(x){seq(10 ^ (x - 1), 9 * 10 ^ (x - 1), by = 10 ^ (x - 1))})))
   return(list(majors, minors))
 }
 
 mylogx = function(lims){
   breaks = my.log.breaks(lims)
   scale_x_log10(limits = lims, 
-                breaks = 10^breaks[[1]], 
+                breaks = 10 ^ breaks[[1]], 
                 minor_breaks = breaks[[2]])
 }
 
 mylogy = function(lims){
-  breaks <- my.log.breaks(lims)
+  breaks = my.log.breaks(lims)
   scale_y_log10(limits = lims, 
-                breaks = 10^breaks[[1]], 
+                breaks = 10 ^ breaks[[1]], 
                 minor_breaks = breaks[[2]])
 }
 
+individ_plot_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 32),
+  axis.title.y = element_text(face = "bold", size = 32),
+  axis.title.x = element_text(face = "bold", size = 32),
+  legend.title = element_text(face = "bold", size = 16),
+  # axis text
+  axis.text.y = element_text(size = 16),
+  axis.text.x = element_text(size = 14, angle = 90, hjust = 0, vjust = 0),
+  # legend text
+  legend.text = element_text(size = 24),
+  # facet text
+  strip.text = element_text(face = "bold", size = 28),
+  # backgrounds, lines
+  panel.background = element_blank(),
+  #strip.background = element_blank(),
+  
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+
+
+run.model = function(data.path,
+                     n.trials,
+                     n.samples, 
+                     p.bumper, 
+                     min.est, 
+                     max.est,
+                     perceived.mag.sd,
+                     est.fxn,
+                     trials.exp,
+                     bumper.exp,
+                     prior.exp,
+                     post.exp) {
+  data = read.data(data.path, n.trials)
+  subjects = unique(data$subject)
+  #subjects = 1 # DEBUGGING
+  
+  for (subj in subjects) {
+    print(paste("Running with participant: ", subj))
+    single.subj.data = data %>%
+      mutate(participant.answer = answer, # name columns for consistent processing
+             num.dots = num_dots) %>% 
+      select(subject, trial, num.dots, participant.answer, model.answer, bumper.trial) %>%
+      filter(subject == subj) # get single participant's data to simulate experiment and compare model to participant
+    # print(dim(single.subj.data)) # DEBUGGING
+    # print(unique(single.subj.data$subject)) # DEBUGGING
+    for (trial.i in seq(1, max(data$trial[data$subject == subj]))) { # iterate over all trials
+      # TODO handle first m trials < N_SAMPLES
+      if (trial.i <= n.samples) {
+        # set first N_SAMPLES values to be a sample from a distribution around the true number of dots
+        estimate = round(10 ^ rnorm(1, log10(single.subj.data$num.dots[trial.i]), perceived.mag.sd), digits = 0)
+        # estimate = single.subj.data$num.dots[trial.i] # DEBUGGING use exact number for initial calibration
+      } else {
+        # print(paste("trial: ", trial.i))
+        # get set of previous trials and real world bumpers to sample
+        sample.cats = rbinom(n.samples, 1, p.bumper)
+        num.bumpers = sum(sample.cats) # TODO this fails if we end up with 0 bumpers, find out why
+        num.trials = n.samples - num.bumpers
+        # print(paste("n samples: ", n.samples, " num.bumpers = ", 
+                    # num.bumpers, " num trials = ", num.trials)) # DEBUGGING
+        
+        # fetch previous trials for magnitude comparison
+        prev.trials = sample.previous.trials(trial.i, single.subj.data, num.trials, trials.exp)
+        # add in "bumpers" as if they were previous trials, then all logic below can treat them the same
+        prev.trials = sample.bumper.mappings(subj, prev.trials, num.bumpers, min.est, max.est, bumper.exp, perceived.mag.sd)
+        
+        # compare magnitude of trial.i to previous trial magnitudes
+        # -> assumes both have a mean around the true number of dots, sd = PERCEIVED_DOTS_NOISE_SD
+        curr.trial.mag.mean = single.subj.data$num.dots[single.subj.data$trial == trial.i]
+        prev.trials = prev.trials %>%
+          mutate(p.mag.greater = 1 - pnorm(0, mean = log10(curr.trial.mag.mean) - log10(num.dots), 
+                                           sd = sqrt(2 * perceived.mag.sd)))
+        
+        # calculate initial log likelihood for this trial based on p.mag.greater from previous trials
+        loglik = calculate.loglik(prev.trials, n.samples, min.est, max.est)
+        # calculate posterior using log likelihood calculated above
+        posterior = calculate.posterior(loglik, prior.exp)
+        
+        # Generate an estimate from the posterior 
+        # -> (functions above for mean, median, probability matched sample, or MAP)
+        # print("sampling posterior")
+        estimate = est.fxn(posterior, post.exp) # all estimate functions above take in posterior
+      }
+      
+      # add estimate to single subject results
+      single.subj.data$model.answer[single.subj.data$trial == trial.i] = estimate
+      # print(paste("num dots: ", single.subj.data$num.dots[single.subj.data$trial == trial.i],
+                  # "est: ", estimate))
+    }
+    # add estimates for this subject to original data
+    data$model.answer[data$subject == subj] = single.subj.data$model.answer
+    
+  }
+  
+  return(data)
+}
 
 
 ####################
@@ -235,17 +342,14 @@ ESTIMATE_FXN = posterior.sample.pl
 POSTERIOR_SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with probability p^l
 
 # params for sample of previous trials
-TRIALS_EXP = -1 # explonential slope parameter for sampling previous trials
+TRIALS_EXP = -4 # explonential slope parameter for sampling previous trials
 
 # params for sample of real world "bumpers"
 BUMPER_EXP = -4 # exponential slope parameter for sampling "bumper" values
 
 # hyperparams: number of samples and probability that samples are derived from real world bumpers
 N_SAMPLES = 20 # total number of samples to take from previous trials and "bumper" distribution
-P_BUMPER = 0.9 # probability p that a given sample comes from previous trials or real world "bumper" distribution
-
-
-
+P_BUMPER = 0.2 # probability p that a given sample comes from previous trials or real world "bumper" distribution
 
 
 
@@ -253,59 +357,18 @@ P_BUMPER = 0.9 # probability p that a given sample comes from previous trials or
 ### RUN MODEL ###
 #################
 
-data = read.data(DATA)
-
-for (subj in SUBJ) {
-  print(paste("Running with participant: ", subj))
-  single.subj.data = data %>%
-    # process existing columns
-    mutate(participant.answer = answer,
-           num.dots = num_dots) %>% 
-    select(subject, trial, num.dots, participant.answer, model.answer, bumper.trial) %>%
-    # get single participant's data to simulate experiment and compare model to participant
-    filter(subject == subj)
-  for (trial.i in seq(1, TRIALS)) { # iterate over all trials
-    # TODO handle first m trials < N_SAMPLES
-    if (trial.i <= N_SAMPLES) {
-      # set first N_SAMPLES values to be a sample from a distribution around the true number of dots
-      estimate = round(10 ^ rnorm(1, log10(single.subj.data$num.dots[trial.i]), PERCEIVED_DOTS_NOISE_SD), digits = 0)
-      # estimate = single.subj.data$num.dots[trial.i] # DEBUGGING use exact number for initial calibration
-    } else {
-      # get set of previous trials and real world bumpers to sample
-      sample.cats = rbinom(N_SAMPLES, 1, P_BUMPER)
-      num.bumpers = sum(sample.cats) # TODO this fails if we end up with 0 bumpers, find out why
-      num.trials = N_SAMPLES - num.bumpers
-
-      # fetch previous trials for magnitude comparison
-      prev.trials = sample.previous.trials(trial.i, single.subj.data, num.trials)
-      # add in "bumpers" as if they were previous trials, then all logic below can treat them the same
-      prev.trials = sample.bumper.mappings(subj, prev.trials, num.bumpers, MIN_ESTIMATE, MAX_ESTIMATE)
-      
-      # compare magnitude of trial.i to previous trial magnitudes
-      # -> assumes both have a mean around the true number of dots, sd = PERCEIVED_DOTS_NOISE_SD
-      curr.trial.mag.mean = single.subj.data$num.dots[single.subj.data$trial == trial.i]
-      prev.trials = prev.trials %>%
-        mutate(p.mag.greater = 1 - pnorm(0, mean = log10(curr.trial.mag.mean) - log10(num.dots), 
-                                         sd = sqrt(2 * PERCEIVED_DOTS_NOISE_SD)))
-      
-      # calculate initial log likelihood for this trial based on p.mag.greater from previous trials
-      loglik = calculate.loglik(prev.trials)
-      # calculate posterior using log likelihood calculated above
-      posterior = calculate.posterior(loglik)
-      
-      # Generate an estimate from the posterior 
-      # -> (functions above for mean, median, probability matched sample, or MAP)
-      estimate = ESTIMATE_FXN(posterior) # all estimate functions above take in posterior
-    }
-    
-    # add estimate to single subject results
-    single.subj.data$model.answer[single.subj.data$trial == trial.i] = estimate
-  }
-  # add estimates for this subject to original data
-  data$model.answer[data$subject == subj] = single.subj.data$model.answer
-  
-}
-
+data = run.model(data.path = DATA,
+                 n.trials = TRIALS,
+                 n.samples = N_SAMPLES, 
+                 p.bumper = P_BUMPER, 
+                 min.est = MIN_ESTIMATE, 
+                 max.est = MAX_ESTIMATE,
+                 perceived.mag.sd = PERCEIVED_DOTS_NOISE_SD,
+                 est.fxn = ESTIMATE_FXN,
+                 trials.exp = TRIALS_EXP,
+                 bumper.exp = BUMPER_EXP,
+                 prior.exp = PRIOR_EXP,
+                 post.exp = POSTERIOR_SAMPLE_EXP)
 
 
 
@@ -324,23 +387,23 @@ results = data %>%
   arrange(trial)
 results
 
+sample.subjects = c(6, 11, 22)
 data %>% # single subject
-  filter(subject == subject.data,
+  filter(subject %in% sample.subjects,
          trial > N_SAMPLES) %>%
   ggplot(aes(x = num_dots)) +
   geom_point(aes(y = answer, color = "subject"), alpha = 0.5) +
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.5) +
   geom_abline() +
-  #geom_vline(xintercept = BUMPER_SET, linetype = "dashed", alpha = 0.5) +
-  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
+  #ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
+  ggtitle(paste("Sample estimates")) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
   mylogx(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
   mylogy(c(MIN_ESTIMATE, MAX_ESTIMATE)) + 
-  theme(axis.title = element_text(size = 16, face = "bold"),
-        plot.title = element_text(size = 20, face = "bold"),
-        legend.position = "bottom")
+  individ_plot_theme +
+  facet_wrap(~subject, ncol = 3)
 
 # Understanding over- and under-estimation (line segments show difference between num.dots and estimate)
 data %>% # single subject
@@ -378,7 +441,8 @@ data %>% # all subjects side by side
   geom_point(aes(y = answer, color = "subject"), alpha = 0.25, size = 0.5) +
   geom_point(aes(y = model.answer, color = "model"), alpha = 0.25, size = 0.5) +
   geom_abline() +
-  ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
+  #ggtitle(paste("Model estimates, calibration = ", N_SAMPLES, " samples, p = ", P_BUMPER)) +
+  ggtitle(paste("Model and participant estimates")) +
   labs(x = "Number presented", y = "Number estimated") +
   scale_color_manual(name = "Estimates", 
                      values = c("subject" = "blue", "model" = "red")) +
@@ -416,21 +480,53 @@ data %>% # all subjects side by side
 
 
 
-# calculate MSE for model, subjects
-data = data %>%
-  mutate(subj.sq.error = (answer - num_dots) ^ 2,
-         model.sq.error = (model.answer - num_dots) ^ 2)
-mean(data$subj.sq.error)
-mean(data$model.sq.error[data$trial>N_SAMPLES])
+### MSE ANALYSIS ###
+# NB: this can take a while!! (approx. 60 seconds per run, but this increases as N_SAMPLES increases)
+mse.df = data.frame('N' = numeric(), 'p' = numeric(), 'mse.subj' = numeric(), 'mse.mod' = numeric())
+
+MSE = FALSE
+
+if (MSE) {
+  P_BUMPER = 0.1 # set P_BUMPER manually for this analysis
+  for (n in seq(1, 25)) {
+    N_SAMPLES = n
+    print(paste("Fitting model with N_SAMPLES = ", N_SAMPLES, ", P_BUMPER = ", P_BUMPER))
+    
+    data = run.model(data.path = DATA,
+                     n.trials = TRIALS,
+                     n.samples = N_SAMPLES, 
+                     p.bumper = P_BUMPER, 
+                     min.est = MIN_ESTIMATE, 
+                     max.est = MAX_ESTIMATE,
+                     perceived.mag.sd = PERCEIVED_DOTS_NOISE_SD,
+                     est.fxn = ESTIMATE_FXN,
+                     trials.exp = TRIALS_EXP,
+                     bumper.exp = BUMPER_EXP,
+                     prior.exp = PRIOR_EXP,
+                     post.exp = POSTERIOR_SAMPLE_EXP)
+    
+    data = calculate.mse(data)
+    
+    mse.df = rbind(mse.df, data.frame('N' = N_SAMPLES, 'p' = P_BUMPER,
+                                      'mse.subj' = mean(data$subj.sq.error),
+                                      'mse.mod' = mean(data$model.sq.error[data$trial > N_SAMPLES])))
+    
+    
+  }
+}
+
+mse.df %>% ggplot(aes(x = N)) +
+  geom_line(aes(y = mse.subj, color = "subjects")) +
+  geom_line(aes(y = mse.mod, color = "model")) +
+  geom_point(aes(y = mse.mod, color = "model"), size = 2) +
+  scale_color_manual(name = "MSE", 
+                     values = c("subjects" = "blue", "model" = "red")) +
+  scale_y_continuous(limits = c(0, 4000)) +
+  ggtitle("Model improvement over N samples") +
+  labs(x = "Samples", y = "MSE") +
+  individ_plot_theme
 
 
-
-
-
-# TODO
-#' cleanup: remove globals from functions (only call functions with globals in main model?)
-#' make function to run model that takes in N, P, other params
-#' -> Run this function for a series of N values (fixed P) and output MSE for subj and model to a data frame for graphing subject/model MSE
 
 
 

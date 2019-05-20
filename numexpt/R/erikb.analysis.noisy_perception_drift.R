@@ -37,7 +37,8 @@ names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
 SUBJ_DATA = data # use processed participant data from erikb.analysis.noisy_perception.R 
 MODEL_DATA = data %>%
   select(subject, trial, num_dots, model.answer) %>%
-  rename(answer = model.answer) # align column names to match participant data
+  mutate(answer = model.answer) # align column names to match participant data
+  
 
 
 #################
@@ -47,10 +48,10 @@ MODEL_DATA = data %>%
 # bi-linear power-law mapping
 map.bipower = function(x, a, b) {
   crit = a
-  slope = 10^b
+  slope = 10 ^ b
   lx = log10(x)
   ly = ((lx > crit) * (crit + (lx - crit) * slope) + (lx <= crit) * lx);
-  return(10^ly)
+  return(10 ^ ly)
 }
 
 # general log likelihood function (with robustness)
@@ -63,7 +64,7 @@ loglik = function(x, y, map.fx, a, b, s) {
 # Compute best fitting params for estimate data
 brutefit = function(tmp) {
   nLL = function(a, b, s) {
-    -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10^s) + PRIORS[[1]](a) + PRIORS[[2]](b) + PRIORS[[3]](s)
+    -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10 ^ s) + PRIORS[[1]](a) + PRIORS[[2]](b) + PRIORS[[3]](s)
   }
   
   iter = 0
@@ -171,13 +172,36 @@ get.distance.cors = function(cor.df) {
   return(dist.df)
 }
 
+individ_plot_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 28),
+  axis.title.y = element_text(face = "bold", size = 24),
+  axis.title.x = element_text(face = "bold", size = 24),
+  legend.title = element_text(face = "bold", size = 16),
+  # axis text
+  axis.text.y = element_text(size = 14),
+  axis.text.x = element_text(size = 14, angle = 90, hjust = 0, vjust = 0),
+  # legend text
+  legend.text = element_text(size = 14),
+  # facet text
+  strip.text = element_text(face = "bold", size = 20),
+  # backgrounds, lines
+  panel.background = element_blank(),
+  #strip.background = element_blank(),
+  
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+
 
 #######################
 ### DATA PROCESSING ###
 #######################
 
 ### Subject Data ###
-# Fit slopes, NB: this can take a minute or two
+# Fit slopes, NB: this can take ~10s
 fitsBlock.subj = fit.slopes(c(BLOCKSIZE), SUBJ_DATA)
 # Get matrix of fitted slope correlations
 cor.matrix.subj = get.cor.matrix(fitsBlock.subj)
@@ -188,7 +212,7 @@ cor.means.df.blocks.subj = get.distance.cors(slope.cor.df.subj)
 
 
 ### Model Data ###
-# Fit slopes, NB: this can take a minute or two
+# Fit slopes, NB: this can take ~10s
 fitsBlock.model = fit.slopes(c(BLOCKSIZE), MODEL_DATA)
 # Get matrix of fitted slope correlations
 cor.matrix.model = get.cor.matrix(fitsBlock.model)
@@ -196,9 +220,6 @@ cor.matrix.model = get.cor.matrix(fitsBlock.model)
 slope.cor.df.model = get.cor.df(cor.matrix.model)
 # Process slope correlations by trial distance to get mean, se across participants
 cor.means.df.blocks.model = get.distance.cors(slope.cor.df.model)
-
-
-
 
 
 ################
@@ -264,15 +285,69 @@ ggplot() +
                     ymax = mean.cor + se.cor,
                     color = "subjects"),
                 width = 5) +
-  ylim(-0.25, 1) +
-  labs(x = "avg trial distance", y = "avg correlation of slopes") +
-  ggtitle("Drift in correlation of slopes at greater trial distances") +
+  #ylim(-0.25, 1) +
+  labs(x = "Distance (trials)", y = "Correlation") +
+  ggtitle("Drift in slope correlation") +
   scale_color_manual(name = "Drift", 
                      values = c("model" = "red", "subjects" = "blue")) +
-  theme(panel.grid = element_blank(),
-        title = element_text(size = 18, face = "bold"),
-        axis.text = element_text(size = 16, face = "bold"),
-        legend.position = "bottom")
+  individ_plot_theme
+
+
+### UNDERESTIMATION ANALYSIS WITH FITTING SLOPES ###
+### Fit slopes to full data rather than blocks, compare humans and model ###
+PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
+names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
+
+PRIORS = list()
+PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
+PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
+PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
+
+# Fit subject data
+bipower.fits.subj = data.frame(do.call(rbind, by(SUBJ_DATA, SUBJ_DATA$subject, brutefit)))
+print(paste("Failed bipower fits:", sum(bipower.fits.subj$logL == -9999)))
+
+# Fit model data
+bipower.fits.mod = data.frame(do.call(rbind, by(MODEL_DATA, MODEL_DATA$subject, brutefit)))
+print(paste("Failed bipower fits:", sum(bipower.fits.mod$logL == -9999)))
+
+predictions = data.frame()
+for (s in unique(SUBJ_DATA$subject)){
+  stims = seq(1, 300, by = 1)
+  # subject params
+  biparams.subj = bipower.fits.subj[bipower.fits.subj$subject == s,]
+  bipred.subj = (map.bipower(stims, biparams.subj$a, biparams.subj$b))
+  # model params
+  biparams.mod = bipower.fits.mod[bipower.fits.mod$subject == s,]
+  bipred.mod = (map.bipower(stims, biparams.mod$a, biparams.mod$b))
+  predictions = rbind(predictions, 
+                      data.frame(subject = s, 
+                                 num_dots = stims,
+                                 bipred.subj = bipred.subj,
+                                 bipred.mod = bipred.mod))
+}
+
+sample.subjects = c(6, 11, 22)
+sdat = subset(SUBJ_DATA, SUBJ_DATA$subject %in% sample.subjects)
+mod.sdat = subset(MODEL_DATA, MODEL_DATA$subject %in% sample.subjects)
+spredictions = subset(predictions, predictions$subject %in% sample.subjects)
+
+
+ggplot(sdat, aes(x = num_dots, y = answer)) +
+  geom_point(aes(color = "subject"), alpha = 0.25, size = 2) +
+  geom_point(data = mod.sdat, aes(x = num_dots, y = answer, color = "model"), alpha = 0.25, size = 2) +
+  geom_line(data = spredictions, aes(x = num_dots, y = bipred.subj, color = "subject"), size = 2) +
+  geom_line(data = spredictions, aes(x = num_dots, y = bipred.mod, color = "model"), size = 2) +
+  geom_abline() +
+  mylogx(c(1, 300)) +
+  mylogy(c(1, 300)) +
+  ggtitle("Sample estimates") +
+  xlab("Number presented") +
+  ylab("Number reported") +
+  scale_color_manual(name = "Estimates", 
+                     values = c("subject" = "blue", "model" = "red")) +
+  individ_plot_theme +
+  facet_wrap(~subject, ncol = 3)
 
 
 

@@ -10,9 +10,12 @@
 setwd("/Users/erikbrockbank/web/vullab/numberline/num-density.2013-06/R/")
 rm(list=ls())
 
+library(tidyverse)
+library(ggplot2)
 library(reshape)
 library(psych) # needed for fisherz
 library(HardyWeinberg) # needed for ifisherz
+library(Rmisc)
 
 
 ### GLOBALS ###
@@ -41,10 +44,11 @@ to.num = function(x){as.numeric(as.character(x))}
 # NB: these are very similar to functions used in `erikb.analysis.noisy_perception_drift.R`
 map.bipower = function(x, a, b){
   crit = a
-  slope = 10 ^ b
+  slope = 10^b
+  #slope = b
   lx = log10(x)
   ly = ((lx > crit) * (crit + (lx - crit) * slope) + (lx <= crit) * lx);
-  return(10 ^ ly)
+  return(10^ly)
 }
 
 ## general log likelihood function (with robustness)
@@ -57,7 +61,7 @@ loglik = function(x, y, map.fx, a, b, s){
 # fit power function
 brutefit = function(tmp){
   nLL = function(a, b, s){
-    -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10 ^ s) + # NB: can use other function instead of `map.bipower`
+    -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10^s) + # NB: can use other function instead of `map.bipower`
       PRIORS[[1]](a) + 
       PRIORS[[2]](b) + 
       PRIORS[[3]](s)
@@ -76,7 +80,9 @@ brutefit = function(tmp){
     if (!is.null(fit)) {
       fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
     } else {
-      if (iter > 50) {
+      if (iter > 50) { # NB increase this for larger data than individual participants/blocks
+      #if (iter > 5000) { 
+        #print("Unable to fit slope")
         fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
       }      
     }
@@ -152,21 +158,21 @@ gettcor = function(vi, vj, R) {
 
 my.log.breaks = function(lims){
   majors = seq(floor(log10(lims[1])), ceiling(log10(lims[2])), by = 1)
-  minors = log10(unlist(lapply(majors[-1], function(x){seq(10^(x - 1), 9 * 10 ^ (x - 1), by = 10 ^ (x - 1))})))
+  minors = log10(unlist(lapply(majors[-1], function(x){seq(10^(x - 1), 9 * 10^(x - 1), by = 10^(x - 1))})))
   return(list(majors, minors))
 }
 
 mylogx = function(lims){
   breaks = my.log.breaks(lims)
   scale_x_log10(limits = lims, 
-                breaks = 10 ^ breaks[[1]], 
+                breaks = 10^breaks[[1]], 
                 minor_breaks = breaks[[2]])
 }
 
 mylogy = function(lims){
   breaks = my.log.breaks(lims)
   scale_y_log10(limits = lims, 
-                breaks = 10 ^ breaks[[1]], 
+                breaks = 10^breaks[[1]], 
                 minor_breaks = breaks[[2]])
 }
 
@@ -181,7 +187,7 @@ create.correlation.matrix = function(name, color, data) {
     scale_fill_gradient2(low = "white", mid = "white", high = color, midpoint = 0, limits = c(-1, 1)) +
     xlab("") +
     ylab("") +
-    ggtitle(size.size.label) +
+    ggtitle(name) +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_discrete(expand = c(0, 0)) +
     matrix_plot_theme +
@@ -206,7 +212,7 @@ individ_plot_theme = theme(
   strip.text = element_text(face = "bold", size = 28),
   # backgrounds, lines
   panel.background = element_blank(),
-  strip.background = element_blank(),
+  #strip.background = element_blank(),
   
   panel.grid = element_line(color = "gray"),
   axis.line = element_line(color = "black"),
@@ -298,9 +304,8 @@ length(unique(dat$subject))
 ns
 
 # TODO what's going on with these outliers?? did people really guess 34,000??
-tmp = order(dat$answer, decreasing = T)
-tmp[1:8]
-
+# tmp = order(dat$answer, decreasing = T)
+# tmp[1:8]
 # also why doesn't this show up in the above?
 max(dat$answer)
 dat[dat$answer == max(dat$answer),]
@@ -309,11 +314,11 @@ dat[dat$answer == max(dat$answer),]
 
 ### FIGURE: INDIVIDUAL DATA ###
 # graphs example data for three individual subjects, chosen below
-subjects = c(8, 27, 49) # Sample subjects
+subjects = c(12, 25, 36) # Sample subjects
 sdat = subset(dat, dat$subject %in% subjects)
 
 ggplot(sdat, aes(x = num_dots, y = answer)) +
-  geom_point(alpha = 0.25, color = "blue", size = 6) +
+  geom_point(alpha = 0.25, color = "blue", size = 2) +
   geom_abline(position = "identity") +
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
@@ -329,7 +334,7 @@ ggplot(sdat, aes(x = num_dots, y = answer)) +
 
 # Get median reported answers across log-equidistant blocks of number presented (for each modality)
 # 10 equidistant buckets within accurate estimate range, 20 buckets equidistant in log space
-cuts = c(9.5:20.5, 10 ^ seq(log10(21.5), log10(MAX_PRESENTED), length.out = 20))
+cuts = c(9.5:20.5, 10^seq(log10(21.5), log10(MAX_PRESENTED), length.out = 20))
 summary.stats = data.frame()
 for (i in 1:length(MODALITIES)) {
   sdat = subset(dat, dat$vary == MODALITIES[i])
@@ -372,12 +377,59 @@ ggplot(dat, aes(x = num_dots, y = answer)) +
              labeller = labeller(vary = c("area" = "area", "size" = "size", "density" = "density")))
 
 
+### FIGURE: SLOPE COMPARISONS BY MODALITY ###
+fitsModality = list()
+
+for (i in 1:length(MODALITIES)) {
+  A = (dat$vary == MODALITIES[i])
+  tmp = subset(dat, A)
+  tmp$subject = i # aggregate over all subjects in slope fit
+  fitsModality[[MODALITIES[i]]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
+  print(c(i, sum(fitsModality[[MODALITIES[i]]]$logL == -9999)))
+}
+
+predictions = data.frame('modality' = character(),
+                         'num_dots' = numeric(),
+                         'prediction' = numeric(),
+                         'prediction.ul' = numeric(),
+                         'prediction.ll' = numeric())
+
+# NB: IMPORTANT the calls to map.bipower below require  modifying map.bipower to take in a transformed b value and not compute log transform in the function
+for (i in 1:length(MODALITIES)) {
+  true_vals = 1:MAX_PRESENTED
+  predictions = rbind(predictions,
+                      data.frame(modality = MODALITIES[i],
+                                 num_dots = true_vals,
+                                 prediction = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b),
+                                 prediction.ul = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b + 10^fitsModality[[i]]$s),
+                                 prediction.ll = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b - 10^fitsModality[[i]]$s)))
+  
+}
+
+ggplot(dat, aes(x = num_dots, y = answer)) +
+  geom_point(color = "blue", size = 2, alpha = 0.05) +
+  geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red") +
+  geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red") +
+  geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, alpha = 0.5) +
+  geom_abline(position = "identity") +
+  mylogx(c(1, MAX_PRESENTED)) +
+  mylogy(c(1, MAX_ESTIMATE)) +
+  xlab("Number presented") + 
+  ylab("Number reported") + 
+  ggtitle("Accuracy across estimate conditions") +
+  individ_plot_theme +
+  facet_wrap(~vary, ncol = 3,
+             labeller = labeller(vary = c("area" = "area", "size" = "size", "density" = "density")))
+
+
+
+
+
 ### FIGURE: SLOPE CORRELATIONS BY BLOCK ###
 
 # Fit slope data
 trialcuts = c(0, 25, 75, 125, 175, 225, 275, 325, 375, 425, 475, 525, 575, 1000) # TODO clarify what's happening here
 dat$block = cut(dat$trial, trialcuts, labels = 0:(length(trialcuts) - 2), include.lowest = T)
-# TODO what's going on with mod logic here?
 dat$mod = (dat$trial - 26) %% 11 + 1
 dat$mod[dat$block == 0] = 0
 dat$mod[dat$block == (length(trialcuts) - 2)] = (length(trialcuts) - 2)
@@ -396,6 +448,7 @@ for (i in 1:length(MODALITIES)) {
     # fit slopes by modular split
     A = (dat$vary == MODALITIES[i]) & (dat$mod == k)
     tmp = subset(dat, A)
+    #print(dim(tmp))
     fitsMod[[MODALITIES[i]]][[k + 1]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
     # sanity check
     print(c(i, k, sum(fitsMod[[MODALITIES[i]]][[k + 1]]$logL == -9999), 
@@ -433,7 +486,7 @@ for (i in 1:length(MODALITIES)) {
     R[[MODALITIES[i]]][[MODALITIES[j]]] = cor(s1, s2, use = "pairwise.complete.obs")
     rownames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
     colnames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
-    m = melt(R[[MODALITIES[i]]][[MODALITIES[j]]][2:12,2:12]) # TODO make this less arbitrary
+    m = melt(R[[MODALITIES[i]]][[MODALITIES[j]]][2:12, 2:12]) # TODO make this less arbitrary
     names(m) = c("Block1", "Block2", "Correlation") # correlation of slopes
     m = m[m$Block2 >= m$Block1,] # keep only top half of correlation matrix
     m$type = paste(MODALITIES[i], MODALITIES[j], sep = "-")
@@ -510,6 +563,197 @@ summary(mod.corrs.across)
 #' In an anova model comparison, a model that includes an interaction between block and comparison
 #' is no better than a model that only includes block
 anova(mod.corrs.across.null, mod.corrs.across) 
+
+
+
+### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY TRIAL MODALITY (ALL BLOCKS) ###
+subjects = c(2, 31, 47)
+subjectsDat = dat %>%
+  filter(subject %in% subjects,
+         as.numeric(block) %in% 2:11)
+
+fitsModalitySubj = list()
+
+for (i in 1:length(MODALITIES)) {
+  A = (subjectsDat$vary == MODALITIES[i])
+  tmp = subset(subjectsDat, A)
+  fitsModalitySubj[[MODALITIES[i]]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
+  print(c(i, sum(fitsModalitySubj[[MODALITIES[i]]]$logL == -9999)))
+}
+
+predictions = data.frame('subject' = character(),
+                         'vary' = character(),
+                         'num_dots' = numeric(),
+                         'prediction' = numeric())
+                         #'prediction.ul' = numeric(),
+                         #'prediction.ll' = numeric())
+
+for (i in 1:length(MODALITIES)) {
+  for (j in 1:length(subjects)) {
+    true_vals = 1:MAX_PRESENTED
+    predictions = rbind(predictions,
+                        data.frame(subject = subjects[j],
+                                   vary = MODALITIES[i],
+                                   num_dots = true_vals,
+                                   prediction = map.bipower(true_vals, fitsModalitySubj[[i]]$a[j], fitsModalitySubj[[i]]$b[j])))
+                                   #prediction.ul = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b + 10^fitsModality[[i]]$s),
+                                   #prediction.ll = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b - 10^fitsModality[[i]]$s)))
+  }
+}
+
+ggplot(subjectsDat, aes(x = num_dots, y = answer)) +
+  geom_point(color = "blue", size = 2, alpha = 0.25) +
+  geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = .8) +
+  geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 2) +
+  #geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, alpha = 0.5) +
+  geom_abline(position = "identity") +
+  mylogx(c(1, MAX_PRESENTED)) +
+  mylogy(c(1, MAX_ESTIMATE)) +
+  xlab("Number presented") + 
+  ylab("Number reported") + 
+  ggtitle("Fitted slopes for sample participants") +
+  individ_plot_theme +
+  facet_grid(subject~vary, scales = "free")
+
+
+
+
+### FIGURE: INDIVIDUAL DIFFERENCES ACROSS MODALITIES, ALL BLOCKS ###
+sample.fn = function(vals) {
+  sample(vals, length(vals), replace = F)
+}
+
+individ.dat = dat %>%
+  filter(as.numeric(block) %in% 2:11) %>% # blocks 1-10
+  group_by(subject, vary) %>%
+  mutate(split.half = as.numeric(trial %% 2 == 0)) %>% # this is just a stand-in, we shuffle these below
+  mutate(split.half = replace(split.half, values = sample.fn(split.half)))
+
+# make sure the above worked (check order of split.half)
+individ.dat %>%
+  group_by(subject, vary, trial) %>%
+  glimpse()
+
+
+# fit slopes to each split half for each participant, modality trials
+fitsModalitySplit = list()
+
+for (i in 1:length(MODALITIES)) {
+  fitsModalitySplit[[MODALITIES[i]]] = list()
+  
+  # split half == 0
+  A = (individ.dat$vary == MODALITIES[i] & individ.dat$split.half == 0)
+  tmp = subset(individ.dat, A)
+  fitsModalitySplit[[MODALITIES[i]]][['0']] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
+  print(c(i, sum(fitsModalitySplit[[MODALITIES[i]]][['0']]$logL == -9999)))
+  
+  # split half == 1
+  A = (individ.dat$vary == MODALITIES[i] & individ.dat$split.half == 1)
+  tmp = subset(individ.dat, A)
+  fitsModalitySplit[[MODALITIES[i]]][['1']] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
+  print(c(i, sum(fitsModalitySplit[[MODALITIES[i]]][['1']]$logL == -9999)))
+}
+
+mconf = data.frame("Comparison" = character(), "corr" = numeric(), "Lower.conf" = numeric(), "Upper.conf" = numeric(), "Within" = numeric())
+
+for (i in 1:length(MODALITIES)) {
+  for (j in i:length(MODALITIES)) {
+    s1.label = MODALITIES[i]
+    s2.label = MODALITIES[j]
+    # outputs df of slopes for 0 pairwise, 1 pairwise for each participant in that modality
+    s1 = do.call(cbind.fill, lapply(fitsModalitySplit[[MODALITIES[i]]], namedSlopes))
+    s2 = do.call(cbind.fill, lapply(fitsModalitySplit[[MODALITIES[j]]], namedSlopes))
+    names(s1) = c("half0", "half1")
+    names(s2) = c("half0", "half1")
+    
+    if (i == j) { # when i == j, s1 and s2 are identical
+      cortest = cor.test(s1$half0, s1$half1)
+    } else {
+      cortest = cor.test(s1$half0, s2$half0) # choice of half in s1 and s2 is arbitrary
+    }
+    mconf = rbind(mconf, data.frame(Comparison = paste(s1.label, s2.label, sep = "-"),
+                                    corr = cortest$estimate,
+                                    Lower.conf = cortest$conf.int[1],
+                                    Upper.conf = cortest$conf.int[2],
+                                    Within = as.numeric(i == j)))
+  }
+}
+
+mconf %>%
+  ggplot(aes(x = fct_reorder(Comparison, corr, .desc = TRUE), 
+             y = corr, 
+             fill = as.factor(Within))) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_errorbar(aes(ymin = Lower.conf, ymax = Upper.conf), width = 0.25) +
+  ggtitle("Split half slope correlations") +
+  labs(x = "Modality comparison", y = "Correlation") +
+  scale_fill_manual(name = "",
+                     values = c("0" = "#999999", "1" = "#56B4E9"),
+                     labels = c("0" = "Across-modality", "1" = "Within-modality")) +
+  ylim(0, 1) +
+  individ_plot_theme
+
+
+### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY BLOCK AND TRIAL MODALITY ###
+
+subjects = c(2)
+dat.subject = dat %>%
+  filter(subject %in% subjects, as.numeric(block) %in% 1:11)
+
+df.slopes = data.frame('vary' = character(),
+                       'subject' = numeric(),
+                       'block' = numeric(),
+                       'num_dots' = numeric(),
+                       'pred' = numeric())
+
+for (i in 1:length(MODALITIES)) {
+  modality = MODALITIES[[i]]
+  slopes = fitsBlock[[modality]]
+  for (j in 1:length(slopes)) {
+    subj.slopes = slopes[[j]]
+    subj.slopes = subj.slopes[subj.slopes$subject %in% subjects,]
+    df.slopes = rbind(df.slopes, data.frame(
+      vary = modality,
+      subject = subjects[1], # hacky
+      block = j,
+      num_dots = 1:MAX_PRESENTED,
+      pred = map.bipower(1:MAX_PRESENTED, subj.slopes$a, subj.slopes$b)
+    ))
+  }
+}
+
+df.slopes = df.slopes %>%
+  filter(as.numeric(block) %in% 1:11)
+    
+  
+dat.subject %>%
+  ggplot(aes(x = num_dots, y = answer)) +
+  geom_point(alpha = 0.5, size = 1.5, color = "blue") +
+  geom_line(data = df.slopes, aes(x = num_dots, y = pred), color = "red", size = 0.8) +
+  mylogx(c(1, MAX_PRESENTED)) +
+  mylogy(c(1, MAX_ESTIMATE)) +
+  xlab("Number presented") + 
+  ylab("Number reported") + 
+  ggtitle("Sample slope estimates by block, modality") +
+  #individ_plot_theme +
+  theme(
+    # titles
+    plot.title = element_text(face = "bold", size = 20),
+    axis.title.y = element_text(face = "bold", size = 14),
+    axis.title.x = element_text(face = "bold", size = 14),
+    # axis text
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 0, vjust = 0),
+    # facet text
+    strip.text = element_text(face = "bold", size = 12),
+    # backgrounds, lines
+    panel.background = element_blank(),
+    panel.grid = element_line(color = "gray"),
+    axis.line = element_line(color = "black"),
+    # positioning
+    legend.position = "bottom"
+  ) +
+  facet_grid(as.numeric(block)~vary, scales = "free")
 
 
 

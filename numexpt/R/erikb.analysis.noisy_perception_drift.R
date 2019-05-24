@@ -125,14 +125,13 @@ cbind.fill = function(...) {
 
 # Compute best fitting slopes for each participant x trial block of size `blocksizes` in `data`
 fit.slopes = function(blocksizes, data) {
-  for (i in 1:length(blocksizes)) {
-    n = blocksizes[i]
-    fitsBlock = list()
-    for (k in 1:n) {
-      tmp = subset(data, splitBlock(data$trial, n, TRIALS) == (k - 1))
-      fitsBlock[[k]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
-    }
+  n = blocksizes[1]
+  fitsBlock = list()
+  for (k in 1:n) {
+    tmp = subset(data, splitBlock(data$trial, n, TRIALS) == (k - 1))
+    fitsBlock[[k]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
   }
+
   return(fitsBlock)
 }
 

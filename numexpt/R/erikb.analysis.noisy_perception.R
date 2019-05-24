@@ -78,7 +78,7 @@ read.data = function(filepath, n.trials) {
 sample.previous.trials = function(trial.i, single.subject.data, n.trials, trials.exp){
   # set of number mappings from which to sample bumpers
   trial_set = data.frame("sub_index" = seq(1, trial.i - 1)) # number of trials *back* from current trial to sample
-  trial_set$sub_index.scaled = trial_set$sub_index ^ trials.exp # TODO this is exponential but linearly decreasing in log sapce
+  trial_set$sub_index.scaled = trial_set$sub_index ^ trials.exp
   trial_set$ptrial_sub = trial_set$sub_index.scaled / sum(trial_set$sub_index.scaled)
   prev.trial.sub.indices = sort(with(trial_set, sample(sub_index, n.trials, prob = ptrial_sub, replace = F)))
   

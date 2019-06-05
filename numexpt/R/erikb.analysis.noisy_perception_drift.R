@@ -164,10 +164,9 @@ get.distance.cors = function(cor.df) {
     mutate(block.dist = block2 - block1,
            trial.dist = 10 * block.dist) %>%
     group_by(trial.dist) %>%
-    summarize(mean.cor = mean(slope.corr),
-              se.cor = sd(slope.corr) / sqrt(length(slope.corr))) %>%
-    filter(trial.dist > 0)
-  
+    summarize(mean.cor = mean(slope.corr, na.rm = TRUE),
+              se.cor = sd(slope.corr, na.rm = TRUE) / sqrt(length(slope.corr)))
+
   return(dist.df)
 }
 

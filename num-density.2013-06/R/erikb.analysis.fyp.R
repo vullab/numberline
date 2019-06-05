@@ -81,7 +81,7 @@ brutefit = function(tmp){
       fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
     } else {
       if (iter > 50) { # NB increase this for larger data than individual participants/blocks
-      #if (iter > 5000) { 
+      # if (iter > 500) { 
         #print("Unable to fit slope")
         fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
       }      
@@ -328,6 +328,33 @@ ggplot(sdat, aes(x = num_dots, y = answer)) +
   facet_wrap(~subject, ncol = 3) +
   individ_plot_theme 
 
+ggplot(dat, aes(x = num_dots, y = answer)) +
+  geom_point(alpha = 0.25, color = "blue", size = 0.5) +
+  geom_abline(position = "identity") +
+  mylogx(c(1, MAX_PRESENTED)) +
+  mylogy(c(1, MAX_ESTIMATE)) +
+  ggtitle("Estimation data, all participants") +
+  xlab("Number presented") +
+  ylab("Number reported") +
+  theme(
+    # titles
+    plot.title = element_text(face = "bold", size = 20),
+    axis.title.y = element_text(face = "bold", size = 14),
+    axis.title.x = element_text(face = "bold", size = 14),
+    # axis text
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10, angle = 90, hjust = 0, vjust = 0),
+    # facet text
+    strip.text = element_text(face = "bold", size = 8),
+    # backgrounds, lines
+    panel.background = element_blank(),
+    panel.grid = element_line(color = "gray"),
+    axis.line = element_line(color = "black"),
+    # positioning
+    legend.position = "bottom"
+  ) +
+  facet_wrap(~subject, ncol = 11)
+
 
 
 ### FIGURE: PERFORMANCE BY MODALITY ###
@@ -348,17 +375,6 @@ for (i in 1:length(MODALITIES)) {
                         vary = rep(MODALITIES[i], length(acc[,1]))))
 }
 
-# Test whether line fit to bilinear portion of each modality is different across modalities
-model.medians.null = lm(data = summary.stats[summary.stats$truens > 20,], medians ~ truens)
-summary(model.medians.null)
-anova(model.medians.null)
-
-# model.medians.int = lmer(data = summary.stats[summary.stats$truens > 20,], medians ~ truens + truens:vary + (1|vary))
-model.medians.int = lm(data = summary.stats[summary.stats$truens > 20,], medians ~ truens + truens:vary)
-summary(model.medians.int)
-anova(model.medians.int)
-
-anova(model.medians.null, model.medians.int)
 
 # Plot median estimates across modalities
 ggplot(dat, aes(x = num_dots, y = answer)) +
@@ -448,7 +464,6 @@ for (i in 1:length(MODALITIES)) {
     # fit slopes by modular split
     A = (dat$vary == MODALITIES[i]) & (dat$mod == k)
     tmp = subset(dat, A)
-    #print(dim(tmp))
     fitsMod[[MODALITIES[i]]][[k + 1]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
     # sanity check
     print(c(i, k, sum(fitsMod[[MODALITIES[i]]][[k + 1]]$logL == -9999), 
@@ -694,6 +709,73 @@ mconf %>%
   individ_plot_theme
 
 
+### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY BLOCK ONLY ###
+# NB: relies on trialcuts and other columns added to `dat` above
+
+subjects = c(2)
+dat.subject = dat %>%
+  filter(subject %in% subjects, as.numeric(block) %in% 1:10)
+
+fitsBlockOnly = list()
+for (k in 0:(length(trialcuts) - 2)) { # TODO why the -2?
+  # fit slopes by block
+  A = (dat$block == k)
+  tmp = subset(dat, A)
+  fitsBlockOnly[[k + 1]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
+  # sanity check
+  print(c(i, k, sum(fitsBlockOnly[[k + 1]]$logL == -9999)))
+}
+
+df.slopes.block.only = data.frame('subject' = numeric(),
+                       'block' = numeric(),
+                       'num_dots' = numeric(),
+                       'pred' = numeric())
+
+for (i in 1:length(fitsBlockOnly)) {
+  subj.slopes = fitsBlockOnly[[i]]
+  subj.slopes = subj.slopes[subj.slopes$subject %in% subjects,]
+  df.slopes.block.only = rbind(df.slopes.block.only, data.frame(
+    subject = subjects[1], # hacky
+    block = i,
+    num_dots = 1:MAX_PRESENTED,
+    pred = map.bipower(1:MAX_PRESENTED, subj.slopes$a, subj.slopes$b)
+  ))
+}
+
+df.slopes.block.only = df.slopes.block.only %>%
+  filter(as.numeric(block) %in% 1:10)
+
+dat.subject %>%
+  ggplot(aes(x = num_dots, y = answer)) +
+  geom_point(alpha = 0.5, size = 1.5, color = "blue") +
+  geom_line(data = df.slopes.block.only, aes(x = num_dots, y = pred), color = "red", size = 0.8) +
+  mylogx(c(1, MAX_PRESENTED)) +
+  mylogy(c(1, MAX_ESTIMATE)) +
+  xlab("Number presented") + 
+  ylab("Number reported") + 
+  ggtitle("Sample slope estimates by block") +
+  facet_wrap(as.numeric(block)~., ncol = 5) +
+  #individ_plot_theme +
+  theme(
+    # titles
+    plot.title = element_text(face = "bold", size = 20),
+    axis.title.y = element_text(face = "bold", size = 14),
+    axis.title.x = element_text(face = "bold", size = 14),
+    # axis text
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 0, vjust = 0),
+    # facet text
+    strip.text = element_text(face = "bold", size = 12),
+    # backgrounds, lines
+    panel.background = element_blank(),
+    panel.grid = element_line(color = "gray"),
+    axis.line = element_line(color = "black"),
+    # positioning
+    legend.position = "bottom"
+  )
+
+
+
 ### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY BLOCK AND TRIAL MODALITY ###
 
 subjects = c(2)
@@ -852,22 +934,6 @@ for (i in 1:length(MODALITIES)) {
 # these fitted slopes are all highly significant (and very similar) for normal data
 # for shuffled data, none are significantly different from 0
 
-
-#' Analysis: check that slope of each line is not significantly different from each other
-#' ANOVA model comparison for model that just fits correlation by distance (null) and model
-#' that fits correlation by distance * comparison
-
-# mod.corrs.distance = lm(data = df, mu ~ distances * type)
-mod.corrs.distance = lm(data = df, mu ~ distances + distances:type)
-summary(mod.corrs.distance)
-anova(mod.corrs.distance) # the interaction term is significant
-
-mod.corrs.distance.null = lm(data = df, mu ~ distances)
-summary(mod.corrs.distance.null)
-
-anova(mod.corrs.distance.null, mod.corrs.distance)
-# Model with interaction between distance and comparison is significantly better than model
-# with just distance
 
 
 

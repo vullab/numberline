@@ -1,13 +1,21 @@
 ### Analysis script for Cog Sci numberline revisions, first year project paper, and larger paper submission ###
-#' This has overlap with other analysis files in this directory but represents a cleaner, final version
-#' The process of reading in, processing, and cleaning in data is mostly taken from `load.density.data.R`
-#' The bulk of the analysis is taken from `fit.models.density-blocks.2014-06-02.R`, 
-#' with some code taken from `fit.models.density.2014-06-02.R`
+#' Specifically, this script does all analysis of the *perceptual modality experiment*. 
+#' The other files doing analysis of this data are in `/numberline/num-density.2013-06/R/`
+#' but this script represents a cleaner, final version.
+#' The process of reading in, processing, and cleaning in data is mostly taken from `/numberline/num-density.2013-06/R/load.density.data.R`
+#' The bulk of the analysis is taken from `/numberline/num-density.2013-06/R/fit.models.density-blocks.2014-06-02.R`, 
+#' with some code taken from `/numberline/num-density.2013-06/R/fit.models.density.2014-06-02.R`
 #' 
 
+#' TODO
+#' - consolidate plot themes (lots of overlap in global themes)
+#' - fix map.bipower to not to log transforms, allow for more flexible use with st. error
+#' - declare globals (or some variable...) for plots that look at limited subsets of trial blocks (some inline TODOs about this)
+#' - other general cleanup
+#' - migrate this to an rmarkdown for easier sharing?
 
 
-setwd("/Users/erikbrockbank/web/vullab/numberline/num-density.2013-06/R/")
+setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
 rm(list=ls())
 
 library(tidyverse)
@@ -19,9 +27,10 @@ library(Rmisc)
 
 
 ### GLOBALS ###
+DATA_FILEPATH = "../num-density.2013-06/data/"
 FEEDBACK_TRIALS = 1:25 # trials in which feedback was given
-COLNAMES = c('trial', 't.start', 'time', 'vary', 'num_dots', 'answer', 'r.dot', 'r.space', 'n.rings', 'feedback', 
-             'points', 'score', 'subject') # names of columns for reading in data
+COLNAMES = c("trial", "t.start", "time", "vary", "num_dots", "answer", "r.dot", "r.space", "n.rings", "feedback", 
+             "points", "score", "subject") # names of columns for reading in data
 COR_THRESHOLD = 0.6 # minimum correlation threshold between participant answers and true num_dots (for dropping outliers)
 MAX_PRESENTED = 750 # highest number presented during the task
 MAX_ESTIMATE = 1000 # max value for displaying number reported (note some estimates were larger than this)
@@ -33,58 +42,59 @@ PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
 PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.25, log = T)} #
 PRIORS[[3]] = function(x){-dnorm(x, -0.9, 0.1, log = T)} # 
 
+RUN_SHUFFLE_ANALYSIS = FALSE # whether to do shuffle analysis of data
 
 ### FUNCTIONS ###
 # Data processing functions
 to.num = function(x){as.numeric(as.character(x))}
 
-# Modeling functions
+### Modeling functions ###
 
 # These functions modified from `fit.models.density-blocks.2014-06-02.R`
-# NB: these are very similar to functions used in `erikb.analysis.noisy_perception_drift.R`
-map.bipower = function(x, a, b){
+# NB: some overlap between these functions and others used in modeling scripts in this directory
+map.bipower = function(x, a, b) {
   crit = a
   slope = 10^b
-  #slope = b
+  # slope = b
   lx = log10(x)
   ly = ((lx > crit) * (crit + (lx - crit) * slope) + (lx <= crit) * lx);
   return(10^ly)
 }
 
-## general log likelihood function (with robustness)
-loglik = function(x, y, map.fx, a, b, s){
+# general log likelihood function (with robustness)
+loglik = function(x, y, map.fx, a, b, s) {
   sum(
     pmax(-6, dnorm(log10(y) - log10(map.fx(x, a, b)), 0, s, log = T))
   )
 }
 
 # fit power function
-brutefit = function(tmp){
-  nLL = function(a, b, s){
+brutefit = function(tmp) {
+  nLL = function(a, b, s) {
     -loglik(tmp$num_dots, tmp$answer, map.bipower, a, b, 10^s) + # NB: can use other function instead of `map.bipower`
-      PRIORS[[1]](a) + 
-      PRIORS[[2]](b) + 
+      PRIORS[[1]](a) +
+      PRIORS[[2]](b) +
       PRIORS[[3]](s)
   }
-  
+
   iter = 0
   fits = NULL
   fit = NULL
-  while (is.null(fits)){
-    try(fit <- summary(mle(nLL, 
-                           start = list(a = runif(1, PARAMS["ma"], PARAMS["sa"]), 
-                                      b = runif(1, PARAMS["mb"], PARAMS["sb"]), 
+  while (is.null(fits)) {
+    try(fit <- summary(mle(nLL,
+                           start = list(a = runif(1, PARAMS["ma"], PARAMS["sa"]),
+                                      b = runif(1, PARAMS["mb"], PARAMS["sb"]),
                                       s = rnorm(1, PARAMS["ms"], PARAMS["ss"])))), TRUE)
     iter = iter + 1
-    
+
     if (!is.null(fit)) {
       fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
     } else {
       if (iter > 50) { # NB increase this for larger data than individual participants/blocks
-      # if (iter > 500) { 
+      # if (iter > 500) {
         #print("Unable to fit slope")
         fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
-      }      
+      }
     }
   }
   names(fits) = c("subject", "logL", "n", "a", "b", "s")
@@ -119,14 +129,20 @@ cbind.fill = function(...) {
   return(do.call(cbind, nm))
 }
 
+# Util function for shuffle analysis
 shuffle.data = function(dat) {
   dat %>%
     group_by(subject) %>%
     mutate(trial = sample(trial, length(trial), replace = F))
 }
 
+# Util function for split-half analysis
+sample.fn = function(vals) {
+  sample(vals, length(vals), replace = F)
+}
 
-# Graphing functions
+
+### Graphing functions ###
 
 offdiagonal = function(mat, n) {
   mat[(row(mat) - col(mat)) == (-n)]
@@ -196,7 +212,7 @@ create.correlation.matrix = function(name, color, data) {
   return(plot)
 }
 
-# theme
+# theme for plots of individual data
 individ_plot_theme = theme(
   # titles
   plot.title = element_text(face = "bold", size = 32),
@@ -204,8 +220,8 @@ individ_plot_theme = theme(
   axis.title.x = element_text(face = "bold", size = 32),
   legend.title = element_text(face = "bold", size = 16),
   # axis text
-  axis.text.y = element_text(size = 16),
-  axis.text.x = element_text(size = 14, angle = 90, hjust = 0, vjust = 0),
+  axis.text.y = element_text(size = 20),
+  axis.text.x = element_text(size = 20, hjust = 1), #, angle = 60, hjust = 0, vjust = 0.1
   # legend text
   legend.text = element_text(size = 24),
   # facet text
@@ -220,6 +236,45 @@ individ_plot_theme = theme(
   legend.position = "bottom"
 )
 
+# theme for plots with many individual plots (smaller text sizes, etc.)
+large_plot_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 20),
+  axis.title.y = element_text(face = "bold", size = 14),
+  axis.title.x = element_text(face = "bold", size = 14),
+  # axis text
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10, angle = 90, hjust = 0, vjust = 0),
+  # facet text
+  strip.text = element_text(face = "bold", size = 8),
+  # backgrounds, lines
+  panel.background = element_blank(),
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+
+# theme for plots with a handful of individual plots (slightly smaller text sizes, etc.)
+medium_plot_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 20),
+  axis.title.y = element_text(face = "bold", size = 14),
+  axis.title.x = element_text(face = "bold", size = 14),
+  # axis text
+  axis.text.y = element_text(size = 12),
+  axis.text.x = element_text(size = 12, angle = 90, hjust = 0, vjust = 0),
+  # facet text
+  strip.text = element_text(face = "bold", size = 12),
+  # backgrounds, lines
+  panel.background = element_blank(),
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom"
+)
+
+# theme for correlation plots (drift by modality, original plot of modality correlations by block)
 corr_plot_theme = theme(
   # titles
   plot.title = element_text(face = "bold", size = 32),
@@ -239,6 +294,7 @@ corr_plot_theme = theme(
   legend.position = "bottom"
 )
 
+# theme for plots of trial block correlation matrices
 matrix_plot_theme = theme(
   axis.ticks = element_blank(), 
   axis.text = element_text(size = 16, face = "bold"),
@@ -252,13 +308,13 @@ matrix_plot_theme = theme(
 
 
 ### DATA PROCESSING ###
-# The below is mostly adapted from load.density.data.R in this same directory
+# NB: the below is mostly adapted from `/numberline/num-density.2013-06/R/load.density.data.R`
 
-files = list.files('../data/')
+files = list.files(DATA_FILEPATH)
 dat = data.frame()
 subject = 1
 for (f in files) {
-  q = read.csv2(paste('../data/', f, sep = ""), sep = "\t", header = T, colClasses = "character", skip = 1)
+  q = read.csv2(paste(DATA_FILEPATH, f, sep = ""), sep = "\t", header = T, colClasses = "character", skip = 1)
   q$subject = subject
   dat = rbind(dat, q)
   subject = subject + 1
@@ -282,17 +338,20 @@ dat$vary = as.character(dat$vary)
 dat$vary[dat$vary == "space"] = "density" # NB: added this to make plots more clear (erikb)
 dat$subject = as.numeric(dat$subject)
 
-MODALITIES = unique(dat$vary)
+MODALITIES = unique(dat$vary) # global assigned after reading in data
 
 glimpse(dat)
 length(unique(dat$subject))
 
 ### SHUFFLING: don't run this unless shuffling!! ###
 # shuffle trial order by participant
-# dat = shuffle.data(dat)
-# check that it worked
-table(dat$trial)
-glimpse(dat)
+if (RUN_SHUFFLE_ANALYSIS) {
+  dat = shuffle.data(dat)
+  # check that it worked
+  table(dat$trial)
+  glimpse(dat)
+}
+
 
 # Drop outliers
 rs = rbind(by(dat, dat$subject, function(tmp){cor(tmp$num_dots, tmp$answer, method = "spearman")}))
@@ -303,20 +362,19 @@ glimpse(dat)
 length(unique(dat$subject))
 ns
 
-# TODO what's going on with these outliers?? did people really guess 34,000??
-# tmp = order(dat$answer, decreasing = T)
-# tmp[1:8]
-# also why doesn't this show up in the above?
+# NB: still some major outliers, see below.
+# These are mostly ignored by subsequent analyses when we e.g. fit calibration lines, but good to know they exist
+order(dat$answer, decreasing = T)[1:8]
+# TODO why doesn't the below show up in the process above?
 max(dat$answer)
 dat[dat$answer == max(dat$answer),]
 
 
-
 ### FIGURE: INDIVIDUAL DATA ###
-# graphs example data for three individual subjects, chosen below
+
+# graph example data for three individual subjects, chosen below
 subjects = c(12, 25, 36) # Sample subjects
 sdat = subset(dat, dat$subject %in% subjects)
-
 ggplot(sdat, aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.25, color = "blue", size = 2) +
   geom_abline(position = "identity") +
@@ -328,6 +386,7 @@ ggplot(sdat, aes(x = num_dots, y = answer)) +
   facet_wrap(~subject, ncol = 3) +
   individ_plot_theme 
 
+# graph all subjects in dat
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.25, color = "blue", size = 0.5) +
   geom_abline(position = "identity") +
@@ -336,25 +395,8 @@ ggplot(dat, aes(x = num_dots, y = answer)) +
   ggtitle("Estimation data, all participants") +
   xlab("Number presented") +
   ylab("Number reported") +
-  theme(
-    # titles
-    plot.title = element_text(face = "bold", size = 20),
-    axis.title.y = element_text(face = "bold", size = 14),
-    axis.title.x = element_text(face = "bold", size = 14),
-    # axis text
-    axis.text.y = element_text(size = 10),
-    axis.text.x = element_text(size = 10, angle = 90, hjust = 0, vjust = 0),
-    # facet text
-    strip.text = element_text(face = "bold", size = 8),
-    # backgrounds, lines
-    panel.background = element_blank(),
-    panel.grid = element_line(color = "gray"),
-    axis.line = element_line(color = "black"),
-    # positioning
-    legend.position = "bottom"
-  ) +
+  large_plot_theme +
   facet_wrap(~subject, ncol = 11)
-
 
 
 ### FIGURE: PERFORMANCE BY MODALITY ###
@@ -375,7 +417,6 @@ for (i in 1:length(MODALITIES)) {
                         vary = rep(MODALITIES[i], length(acc[,1]))))
 }
 
-
 # Plot median estimates across modalities
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(colour = "blue", size = 2, alpha = 0.05) +
@@ -394,8 +435,8 @@ ggplot(dat, aes(x = num_dots, y = answer)) +
 
 
 ### FIGURE: SLOPE COMPARISONS BY MODALITY ###
-fitsModality = list()
 
+fitsModality = list()
 for (i in 1:length(MODALITIES)) {
   A = (dat$vary == MODALITIES[i])
   tmp = subset(dat, A)
@@ -404,17 +445,18 @@ for (i in 1:length(MODALITIES)) {
   print(c(i, sum(fitsModality[[MODALITIES[i]]]$logL == -9999)))
 }
 
-predictions = data.frame('modality' = character(),
+predictions = data.frame('vary' = character(),
                          'num_dots' = numeric(),
                          'prediction' = numeric(),
                          'prediction.ul' = numeric(),
                          'prediction.ll' = numeric())
 
-# NB: IMPORTANT the calls to map.bipower below require  modifying map.bipower to take in a transformed b value and not compute log transform in the function
+# NB: IMPORTANT the calls to map.bipower below require modifying map.bipower to take in a transformed b value and not compute log transform in the function
+# TODO fix this more cleanly (e.g. add s to map.bipower with default of NULL, when non-null compute b+/-s), or do all transforms in call to map.bipower
 for (i in 1:length(MODALITIES)) {
   true_vals = 1:MAX_PRESENTED
   predictions = rbind(predictions,
-                      data.frame(modality = MODALITIES[i],
+                      data.frame(vary = MODALITIES[i],
                                  num_dots = true_vals,
                                  prediction = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b),
                                  prediction.ul = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b + 10^fitsModality[[i]]$s),
@@ -422,29 +464,27 @@ for (i in 1:length(MODALITIES)) {
   
 }
 
+# POSTER FIGURE 1
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(color = "blue", size = 2, alpha = 0.05) +
-  geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red") +
-  geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red") +
+  #geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 1) +
+  geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 2) +
   geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, alpha = 0.5) +
   geom_abline(position = "identity") +
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  ggtitle("Accuracy across estimate conditions") +
+  #ggtitle("Accuracy across estimate conditions") +
   individ_plot_theme +
   facet_wrap(~vary, ncol = 3,
-             labeller = labeller(vary = c("area" = "area", "size" = "size", "density" = "density")))
-
-
-
+             labeller = labeller(vary = c("area" = "Area trials", "size" = "Size trials", "density" = "Density trials")))
 
 
 ### FIGURE: SLOPE CORRELATIONS BY BLOCK ###
 
 # Fit slope data
-trialcuts = c(0, 25, 75, 125, 175, 225, 275, 325, 375, 425, 475, 525, 575, 1000) # TODO clarify what's happening here
+trialcuts = c(0, 25, 75, 125, 175, 225, 275, 325, 375, 425, 475, 525, 575, 1000) # TODO this is somewhat arbitrary
 dat$block = cut(dat$trial, trialcuts, labels = 0:(length(trialcuts) - 2), include.lowest = T)
 dat$mod = (dat$trial - 26) %% 11 + 1
 dat$mod[dat$block == 0] = 0
@@ -477,6 +517,32 @@ fitsBlock[["density"]][[13]]
 summary(fitsBlock[["size"]][[10]][['b']])
 
 
+# Analysis: check that participants don't get better over the course of the experiment
+df.slopes = data.frame('modality' = character(), 'block' = numeric(), 'slope.mean' = numeric(), 'slope.se' = numeric())
+for (modality in 1:length(MODALITIES)) {
+  for (block in 1:length(fitsBlock[[modality]])) {
+    slopes.data = fitsBlock[[MODALITIES[modality]]][[block]]$b
+    mean.slope = mean(10^slopes.data)
+    se.slopes = sd(10^slopes.data) / sqrt(length(slopes.data))
+    df.slopes = rbind(df.slopes, data.frame('modality' = MODALITIES[modality], 'block' = block, 
+                                            'slope.mean' = mean.slope, 'slope.se' = se.slopes))
+  }
+}
+df.slopes
+
+
+ggplot(data = df.slopes, aes(x = block, y = slope.mean, color = modality)) + 
+  geom_line() +
+  geom_point() +
+  geom_ribbon(aes(ymin = slope.mean - slope.se, ymax = slope.mean + slope.se), alpha = 0.3) +
+  labs(x = "trial block", y = "mean slope estimate") +
+  individ_plot_theme
+
+
+
+
+
+
 # Get slope correlation matrix
 R = list() # primary slope correlation matrix
 Rr = list() # NB: Rr only gets used for very final plot
@@ -497,7 +563,7 @@ for (i in 1:length(MODALITIES)) {
                                "Lower.conf" = conf[1], "Upper.conf" = conf[2]))
       }
     }
-    # R[[MODALITIES[i]]][[MODALITIES[j]]] is m blocks by m blocks pairwise slope correlations (n pairwise participant observations)
+    # NB: R[[MODALITIES[i]]][[MODALITIES[j]]] is m blocks by m blocks pairwise slope correlations (n pairwise participant observations)
     R[[MODALITIES[i]]][[MODALITIES[j]]] = cor(s1, s2, use = "pairwise.complete.obs")
     rownames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
     colnames(R[[MODALITIES[i]]][[MODALITIES[j]]]) = c()
@@ -520,7 +586,6 @@ mcor$type = as.character(mcor$type)
 # Validating the above
 mcor
 levels(as.factor(mcor$type))
-
 
 # Make data frame with each comparison, slope correlations and confidence intervals per block
 # based on R calculated above
@@ -565,23 +630,11 @@ slope.cors.comparison %>%
                      values = c("size-density" = "red", "size-area" = "blue", "density-area" = "green4"),
                      labels = c("size-density" = "size-density", "size-area" = "size-area", "density-area" = "density-area"))
 
-# Model to compare slopes
-# slope.cors.comparison = slope.cors.comparison %>% filter(block > 0)
-mod.corrs.across = lm(data = slope.cors.comparison, corr ~ block * comparison)
-mod.corrs.across = lm(data = slope.cors.comparison, corr ~ block + block:comparison)
-summary(mod.corrs.across)
-anova(mod.corrs.across) # interaction term is not significant
-
-mod.corrs.across.null = lm(data = slope.cors.comparison, corr ~ block)
-summary(mod.corrs.across)
-
-#' In an anova model comparison, a model that includes an interaction between block and comparison
-#' is no better than a model that only includes block
-anova(mod.corrs.across.null, mod.corrs.across) 
 
 
 
 ### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY TRIAL MODALITY (ALL BLOCKS) ###
+
 subjects = c(2, 31, 47)
 subjectsDat = dat %>%
   filter(subject %in% subjects,
@@ -600,8 +653,6 @@ predictions = data.frame('subject' = character(),
                          'vary' = character(),
                          'num_dots' = numeric(),
                          'prediction' = numeric())
-                         #'prediction.ul' = numeric(),
-                         #'prediction.ll' = numeric())
 
 for (i in 1:length(MODALITIES)) {
   for (j in 1:length(subjects)) {
@@ -611,32 +662,27 @@ for (i in 1:length(MODALITIES)) {
                                    vary = MODALITIES[i],
                                    num_dots = true_vals,
                                    prediction = map.bipower(true_vals, fitsModalitySubj[[i]]$a[j], fitsModalitySubj[[i]]$b[j])))
-                                   #prediction.ul = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b + 10^fitsModality[[i]]$s),
-                                   #prediction.ll = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b - 10^fitsModality[[i]]$s)))
   }
 }
 
+# POSTER FIGURE 2
 ggplot(subjectsDat, aes(x = num_dots, y = answer)) +
   geom_point(color = "blue", size = 2, alpha = 0.25) +
-  geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = .8) +
+  #geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = .8) +
   geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 2) +
-  #geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, alpha = 0.5) +
   geom_abline(position = "identity") +
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  ggtitle("Fitted slopes for sample participants") +
+  #ggtitle("Fitted slopes for sample participants") +
   individ_plot_theme +
-  facet_grid(subject~vary, scales = "free")
-
-
+  facet_grid(subject~vary, scales = "free",
+             labeller = labeller(subject = c("2" = "Subject 2", "31" = "Subject 31", "47" = "Subject 47"),
+               vary = c("area" = "Area trials", "size" = "Size trials", "density" = "Density trials")))
 
 
 ### FIGURE: INDIVIDUAL DIFFERENCES ACROSS MODALITIES, ALL BLOCKS ###
-sample.fn = function(vals) {
-  sample(vals, length(vals), replace = F)
-}
 
 individ.dat = dat %>%
   filter(as.numeric(block) %in% 2:11) %>% # blocks 1-10
@@ -648,7 +694,6 @@ individ.dat = dat %>%
 individ.dat %>%
   group_by(subject, vary, trial) %>%
   glimpse()
-
 
 # fit slopes to each split half for each participant, modality trials
 fitsModalitySplit = list()
@@ -694,19 +739,26 @@ for (i in 1:length(MODALITIES)) {
   }
 }
 
+# POSTER FIGURE 3
+individ_plot_theme$axis.text.x = element_text(size = 20)
+individ_plot_theme$plot.title = element_text(face = "bold", size = 28)
+
 mconf %>%
   ggplot(aes(x = fct_reorder(Comparison, corr, .desc = TRUE), 
              y = corr, 
              fill = as.factor(Within))) +
   geom_bar(stat = "identity", width = 0.5) +
   geom_errorbar(aes(ymin = Lower.conf, ymax = Upper.conf), width = 0.25) +
-  ggtitle("Split half slope correlations") +
-  labs(x = "Modality comparison", y = "Correlation") +
+  ggtitle("Estimate calibration comparisons by modality") +
+  labs(x = "", y = "Split-half slope correlation") +
   scale_fill_manual(name = "",
                      values = c("0" = "#999999", "1" = "#56B4E9"),
                      labels = c("0" = "Across-modality", "1" = "Within-modality")) +
   ylim(0, 1) +
-  individ_plot_theme
+  individ_plot_theme +
+  geom_label(aes(x = 2, y = 0.99, label = "Within modality", fontface = "bold"), color = "#56B4E9", size = 8, fill = "white") +
+  geom_label(aes(x = 5, y = 0.99, label = "Across modality", fontface = "bold"), color = "#999999", size = 8, fill = "white") +
+  theme(legend.position = "none")
 
 
 ### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY BLOCK ONLY ###
@@ -715,6 +767,8 @@ mconf %>%
 subjects = c(2)
 dat.subject = dat %>%
   filter(subject %in% subjects, as.numeric(block) %in% 1:10)
+
+dat.subject$block = as.numeric(dat.subject$block)
 
 fitsBlockOnly = list()
 for (k in 0:(length(trialcuts) - 2)) { # TODO why the -2?
@@ -742,38 +796,28 @@ for (i in 1:length(fitsBlockOnly)) {
   ))
 }
 
-df.slopes.block.only = df.slopes.block.only %>%
-  filter(as.numeric(block) %in% 1:10)
 
+
+df.slopes.block.only = df.slopes.block.only %>%
+  filter(block %in% c(1, 2, 3, 10)) # select a subset of trial blocks
+
+# POSTER FIGURE 4
 dat.subject %>%
+  filter(block %in% c(1, 2, 3, 10)) %>% # select a subset of trial blocks
   ggplot(aes(x = num_dots, y = answer)) +
-  geom_point(alpha = 0.5, size = 1.5, color = "blue") +
-  geom_line(data = df.slopes.block.only, aes(x = num_dots, y = pred), color = "red", size = 0.8) +
+  geom_point(alpha = 0.5, size = 3, color = "blue") +
+  geom_line(data = df.slopes.block.only, aes(x = num_dots, y = pred), color = "red", size = 2) +
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  ggtitle("Sample slope estimates by block") +
-  facet_wrap(as.numeric(block)~., ncol = 5) +
-  #individ_plot_theme +
-  theme(
-    # titles
-    plot.title = element_text(face = "bold", size = 20),
-    axis.title.y = element_text(face = "bold", size = 14),
-    axis.title.x = element_text(face = "bold", size = 14),
-    # axis text
-    axis.text.y = element_text(size = 12),
-    axis.text.x = element_text(size = 12, angle = 90, hjust = 0, vjust = 0),
-    # facet text
-    strip.text = element_text(face = "bold", size = 12),
-    # backgrounds, lines
-    panel.background = element_blank(),
-    panel.grid = element_line(color = "gray"),
-    axis.line = element_line(color = "black"),
-    # positioning
-    legend.position = "bottom"
-  )
-
+  #ggtitle("Sample slope estimates by block") +
+  ggtitle("Sample subject estimates across trial blocks") +
+  #medium_plot_theme +
+  individ_plot_theme +
+  facet_wrap(. ~ block, ncol = 2,
+             labeller = labeller(block = c("1" = "Trials 1-25", "2" = "Trials 26-75",
+                                           "3" = "Trials 76-125", "10" = "Trials 426-475")))
 
 
 ### FIGURE: INDIVIDUAL EXAMPLE SLOPES BY BLOCK AND TRIAL MODALITY ###
@@ -806,7 +850,6 @@ for (i in 1:length(MODALITIES)) {
 
 df.slopes = df.slopes %>%
   filter(as.numeric(block) %in% 1:11)
-    
   
 dat.subject %>%
   ggplot(aes(x = num_dots, y = answer)) +
@@ -817,26 +860,8 @@ dat.subject %>%
   xlab("Number presented") + 
   ylab("Number reported") + 
   ggtitle("Sample slope estimates by block, modality") +
-  #individ_plot_theme +
-  theme(
-    # titles
-    plot.title = element_text(face = "bold", size = 20),
-    axis.title.y = element_text(face = "bold", size = 14),
-    axis.title.x = element_text(face = "bold", size = 14),
-    # axis text
-    axis.text.y = element_text(size = 12),
-    axis.text.x = element_text(size = 12, angle = 90, hjust = 0, vjust = 0),
-    # facet text
-    strip.text = element_text(face = "bold", size = 12),
-    # backgrounds, lines
-    panel.background = element_blank(),
-    panel.grid = element_line(color = "gray"),
-    axis.line = element_line(color = "black"),
-    # positioning
-    legend.position = "bottom"
-  ) +
+  medium_plot_theme +
   facet_grid(as.numeric(block)~vary, scales = "free")
-
 
 
 ### FIGURE: SLOPE CORRELATION MATRICES, ALL COMPARISONS ###
@@ -847,7 +872,6 @@ r = 1.0
 g = 0.7
 b = 1
 s = 1.5
-
 
 size.size.label = "size-size"
 size.size = create.correlation.matrix(size.size.label, rgb(r, 0, 0), mcor)
@@ -866,11 +890,9 @@ density.area = create.correlation.matrix(density.area.label, rgb(0, g / s, b / s
 multiplot(size.size, density.density, area.area, size.density, size.area, density.area, cols = 2)
 
 
-
 ### FIGURE: SLOPE CORRELATIONS BY DISTANCE ###
 # NB: this relies on the correlation matrix `R` calculated above for the SLOPE CORRELATIONS BY BLOCK plot
 # as well as the Rr matrix
-
 
 ds = 1:10
 df = NULL
@@ -897,25 +919,28 @@ g = 0.7
 b = 1
 s = 1.5
 
-
-
 df$type = factor(df$type, levels = c("size-size", "density-density", "area-area", "size-density", "size-area", "density-area"))
 dfr$type = factor(dfr$type, levels = c("size-size", "density-density", "area-area", "size-density", "size-area", "density-area"))
+
+# POSTER FIGURE 5
 ggplot(data = df) +
   geom_point(aes(x = distances, y = nmu, color = type), size = 2) +
   geom_errorbar(aes(x = distances, ymin = nll, ymax = nul, color = type), width = 15, size = 1) +
   geom_line(aes(x = distances, y = nmu, color = type), size = 1) +
-  scale_colour_manual(name = "slope comparison",
+  scale_colour_manual(name = element_blank(),
                       values = c(rgb(r, 0, 0), rgb(0, g, 0), rgb(0, 0, b), 
                                  rgb(r/s, g/s, 0), rgb(r/s, 0, b/s), rgb(0, g/s, b/s))) +
   scale_x_continuous(breaks = ds * 50, minor_breaks = c()) +
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1), minor_breaks = c()) +
-  ylab("Correlation") + 
+  ylab("Slope correlation") + 
   xlab("Distance (trials)") + 
-  ggtitle("Slope correlations by trial distance") +
-  theme(legend.position = "bottom") +
-  corr_plot_theme
-  
+  ggtitle("Estimate calibration comparisons by trial distance") +
+  #corr_plot_theme +
+  individ_plot_theme +
+  theme(legend.position = c(0.2, 0.3),
+        legend.background = element_rect(fill = "gray90", 
+                                         size = 0.5, linetype = "solid"))
+
 
 #' Analysis (FOR SHUFFLED DATA ONLY)
 #' Check that slopes of regressions fit to each correlation line are all ~0

@@ -9,7 +9,7 @@ white = (255,255,255)
 black = (0,0,0)
 
 diameter = 20
-n = 200
+n = 100 # tweak this for modified demo
 #calibrations = 3
 
 def waitForKey():
@@ -25,19 +25,20 @@ def waitForKey():
 
 def buildConfiguration(n):
     configuration = []
-    for i in range(0,n):  
+    for i in range(0,n):
         x = random.randint(int(.05*dispSize[0]), dispSize[0] - int(.05*dispSize[0]) - diameter)
         y = random.randint(int(.05*dispSize[1]), dispSize[1] - int(.05*dispSize[1]) - diameter)
         rect = pygame.Rect(x,y,diameter,diameter)
         if rect.collidelist(configuration) == -1:
-            configuration.append(rect)            
+            configuration.append(rect)
     return configuration
 
 def drawDots(drawer, configuration):
     # makes dots
     drawer.screenFill((white))
     for rect in configuration:
-        pygame.draw.circle(drawer.screen, (0,200,0), rect.center, diameter/2, 0)
+        # pygame.draw.circle(drawer.screen, (200, 0, 0), rect.center, diameter/2, 0)
+        pygame.draw.circle(drawer.screen, (200, 0, 0), rect.center, int(diameter/2), 0) #eb
     drawer.screenFlip()
     waitForKey()
 

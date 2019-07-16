@@ -6,11 +6,12 @@ from pygame.locals import *
 import random
 import math
 
-vary = "size"
-n = 50
+vary = "space" # tweak this for modified graphics {'size', 'area', 'space'}
+n = 500
 
 def getMaxN(I):
-	return(sum(range(0,I)*6)+1)
+	# return(sum(range(0,I)*6)+1)
+	return(sum([6 * x for x in range(0,I)])+1) # TODO erikb delete this
 
 def getMinI(n,I=1):
 	if(n <= (I-1)*6):
@@ -75,7 +76,8 @@ def dotCenters(n, Rdot, Rspace):
 	center = (WX/2,WY/2)
 	I = getMinI(n*scale)
 	maxn = getMaxN(I)
-	usei = range(1,maxn+1)
+	# usei = range(1,maxn+1)
+	usei = list(range(1,maxn+1)) # eb
 	random.shuffle(usei)
 	usei = usei[0:n]
 	dots = []

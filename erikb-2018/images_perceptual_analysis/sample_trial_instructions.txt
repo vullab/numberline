@@ -1,0 +1,11 @@
+To generate sample_trial_*.png:
+From /numberline,
+python num-density.2013-06/num-density.demo.py
+Screenshot trial image
+
+To modify sample trial images:
+From /numberline,
+vi num-density.2013-06/num-density.demo.py
+Modify l9 `vary = ...` to be one of {'size', 'area', 'space'}
+Modify l10 `n = ...` to be in range [1, 1000]
+Re-run demo script as outlined above

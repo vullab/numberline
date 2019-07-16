@@ -22,29 +22,29 @@ Prior work on number estimation has shown that in addition to variance in estima
 ### MCMC Model Results ###
 Our naive MCMC model samples slopes from a distribution centered at 1 for each trial using a Metropolis-Hastings MCMC process and produces a number estimate on a given trial based on the slope at that trial. We designate 24 separate model "participants" that each perform the same 300 trials as actual participants in a prior experiment. We then analyze model data in the same manner as original participant data, fitting slopes to blocks of individual participant estimates using maximum likelihood estimation and comparing pointwise correlations in these fitted slopes across blocks for all participants. The results of this analysis for both model data and participant data are shown below.
 
-![](erikb_participant_data.png)
+![](images_modeling/erikb_participant_data.png)
 
 Above is participant estimates from the original experiment.
 
-![](erikb_mcmc_fake_participants.png)
+![](images_modeling/erikb_mcmc_fake_participants.png)
 
 Here we see equivalent data for the MCMC model participants. 
 
 Below we see correlation in slopes by block across actual participants.
 
-![](erikb_block_slope_corrs_participant.png)
+![](images_modeling/erikb_block_slope_corrs_participant.png)
 
 Below is the same correlation in slopes by block for model data.
 
-![](erikb_block_slope_corrs_mcmc.png)
+![](images_modeling/erikb_block_slope_corrs_mcmc.png)
 
 Based on the correlation across blocks, we calculate correlation in slopes at greater trial distances across participants. Shown here is original participant data.
 
-![](erikb_slope_drift_participants.png)
+![](images_modeling/erikb_slope_drift_participants.png)
 
 The same analysis on the MCMC model data produces the drift below.
 
-![](erikb_slope_drift_mcmc.png)
+![](images_modeling/erikb_slope_drift_mcmc.png)
 
 
 ### MCMC Model Analysis ###
@@ -58,17 +58,17 @@ In order to more accurately capture human number estimates without building a ma
 
 Results from a set of 300 estimates for 100, 50, and 25 "calibration" trials are shown below in red, with actual participant data in blue for reference. In this data, the model is simply taking a sample from the posterior as its estimate, but results are similar if the model takes the mean of the posterior instead. 
 
-![](erikb_model_n100.png)
-![](erikb_model_n50.png)
+![](images_modeling/erikb_model_n100.png)
+![](images_modeling/erikb_model_n50.png)
 
-![](erikb_model_n25.png)
+![](images_modeling/erikb_model_n25.png)
 
 In the model results above, we see that the model is fairly accurate with 100 calibration trials, but by 50 its performance deteriorates and with only 25 calibrations the model performs poorly. In particular, the model consistently underestimates low numbers and overestimates high numbers, which is not at all characteristic of human number estimation and reveals a flaw in the way the model is constructed.
 
 ### Constrained Sampling Model: Analysis ###
 The results from the constrained sampling model show a consistent under estimation of low numbers and an overestimation of high numbers. This is due to the fact that if the model initially overestimates a high number, then for all subsequent trials which have a magnitude greater than the one which produced the original overestimate, they will have a high likelihood of a number estimate even *greater* than the original overestimate (since the magnitude is greater). The same goes for underestimates in the opposite direction. This produces a sort of "race to the top/bottom" for high and low estimates. Human intuition helps us avoid these problems: when I see a number whose magnitude is higher than previous trials, I'm still able to produce a relatively accurate estimate and my future estimates are not tightly constrained by my initial over or underestimate. Faced with 240 dots, I'm not likely to estimate that it's 800, and if I see 300 dots on a later trial, I don't consequently assume that this must be *even more* than 800. This is in effect what the model does: the graph below shows model estimates in red and actual numbers in blue over 300 trials: it's evident that early over or underestimates tie the model's proverbial hands on later estimates that have a higher or lower magnitude
 
-![](erikb_model_disparity.png)
+![](images_modeling/erikb_model_disparity.png)
 
 ### Future Directions ###
 Future work will mostly focus on finding ways to mitigate the constrained sampling model's over and underestimate behavior. This will likely require some form of "scaffolding" whereby the model, even when presented with a number higher or lower than what it has seen in previous trials, knows that there is an upper or lower limit to this estimate beyond that enforced by the prior. In this way, the model's estimates for high and low magnitudes will stay closer to the true number.  
@@ -85,7 +85,7 @@ Vul, E., Barner, D., & Sullivan, J. (2013). Slow drift of individuals' magnitude
 Here we show modeling code and results for two models of counting drift: the "constrained sampling" model and a "naive MCMC" model. 
 
 ```{r globals, eval = FALSE}
-DATA_PATH = '../data/'
+DATA_PATH = '../numexpt/data/'
 SAMPLE_PARTICIPANT = 17
 
 DEBUG = FALSE
@@ -143,7 +143,7 @@ data$answer <- 10 ^ (log10(pmax(1, data$answer1)) / 2 + log10(pmax(1, data$answe
 ```
 
 ### Visualizing Participant Data ###
-![**Participant data for 300 trials (24 participants)**](erikb_participant_data.png)
+![**Participant data for 300 trials (24 participants)**](images_modeling/erikb_participant_data.png)
 
 In the above image, we see that estimate calibration varies *across* participants, with some over and others underestimating. Below is the code to generate this graph, for reference. 
 
@@ -257,26 +257,26 @@ for (trial.i in seq(1, max(single.subj$trial))) { # over all trials
 ### Visualizing Model Distributions ###
 Below, we see sample log likelihood and posterior estimates for a given trial.
 
-![**Sample log likelihood for a given trial**](erikb_loglik_sample.png)
+![**Sample log likelihood for a given trial**](images_modeling/erikb_model_loglik_sample.png)
 
 In the log likelihood estimates above, we can clearly see the influence of previous trials that had larger estimates than the current one, around 115 and 168.
 
-![**Sample log posterior estimate for a given trial**](erikb_posterior_sample.png)
+![**Sample log posterior estimate for a given trial**](images_modeling/erikb_posterior_sample.png)
 
 In the posterior estimates above, we can see the influence of the prior on each of the stepwise segments of the log likelihood.
 
 ### Model Results ###
 The model outputs estimates for each of the 300 trials taken from the original participant data. Below, we see model results for various numbers of calibration trials (model data shown in red alongside participant data in blue). These figures only show the model's estimates *after* the calibration trials.
 
-![**Model performance with 100 calibration trials in each estimate**](erikb_model_n100.png)
+![**Model performance with 100 calibration trials in each estimate**](images_modeling/erikb_model_n100.png)
 
 With 100 calibration trials, the model is fairly accurate, but the poor estimates at the very low and high end of the number range are puzzling.
 
-![**Model performance with 50 calibration trials in each estimate**](erikb_model_n50.png)
+![**Model performance with 50 calibration trials in each estimate**](images_modeling/erikb_model_n50.png)
 
 With 50 calibration trials, we to see reasonable accuracy in a small range for central numbers but poor low and high estimates have crept in towards the middle of the number range.
 
-![**Model performance with 25 calibration trials in each estimate**](erikb_model_n25.png)
+![**Model performance with 25 calibration trials in each estimate**](images_modeling/erikb_model_n25.png)
 
 With 25 calibration trials, the model performs poorly across most of the number range.
 
@@ -286,7 +286,7 @@ In order to better understand why the model does increasingly poorly at the low 
 
 Below we see a comparison of model estimates to true number by trial, with model estimates in red and true number in blue. Note how a particularly high or low estimate causes degradation in subsequent trials.
 
-![**Disparity between model estimates and true numbers shown on each trial**](erikb_model_disparity.png)
+![**Disparity between model estimates and true numbers shown on each trial**](images_modeling/erikb_model_disparity.png)
 
 Generating the plots above (this code is here primarily for reference).
 ```{r plot_model, eval = FALSE}
@@ -409,7 +409,7 @@ for (x in seq(1:participants)) {
 
 We can view the slopes sampled by the model for a sample participant over 300 trials (these are not log transformed).
 
-![**Model MCMC slopes for 300 trials**](erikb_mcmc_slopes.png)
+![**Model MCMC slopes for 300 trials**](images_modeling/erikb_mcmc_slopes.png)
 
 Below is code to generate the above visualization.
 ```{r mcmc_vis, eval = FALSE}
@@ -479,7 +479,7 @@ data.model = data.model %>%
 ### Visualize experimental MCMC ###
 Below we see a graph similar to the one above, but this is based on 24 MCMC "participants". 
 
-![**Sample MCMC experiment data for 300 trials**](erikb_mcmc_fake_participants.png)
+![**Sample MCMC experiment data for 300 trials**](images_modeling/erikb_mcmc_fake_participants.png)
 
 In this image, we see that most of the data stays close to the identity line. 
 
@@ -504,22 +504,22 @@ Based on the experiment results above, we can visualize drift across trial block
 
 Below we see correlation in slopes across trial blocks for model data.
 
-![**Model slope correlations by block**](erikb_block_slope_corrs_mcmc.png)
+![**Model slope correlations by block**](images_modeling/erikb_block_slope_corrs_mcmc.png)
 
 The correlation between arbitrary blocks of trials above allows us to calculate the slope correlations at arbitrary trial *distances*, shown below for model data.
 
-![**Model slope correlations by trial distance, showing "drift" of model slopes**](erikb_slope_drift_mcmc.png)
+![**Model slope correlations by trial distance, showing "drift" of model slopes**](images_modeling/erikb_slope_drift_mcmc.png)
 
 ### Human Participant Comparison ###
 These plots can be compared to the same plots based on participant data below.
 
 Below we see correlation in slopes by block across participants.
 
-![**Original participant slope correlations by block**](erikb_block_slope_corrs_participant.png)
+![**Original participant slope correlations by block**](images_modeling/erikb_block_slope_corrs_participant.png)
 
 Based on the above, we calculate correlation in slopes at greater trial distances across participants.
 
-![**Original participant slope correlations by trial distance, showing "drift" in participant slopes**](erikb_slope_drift_participants.png)
+![**Original participant slope correlations by trial distance, showing "drift" in participant slopes**](images_modeling/erikb_slope_drift_participants.png)
 
 ### Code for slope correlation analysis ###
 The plots for model and participant data are generated using the code below (shown here for reference).

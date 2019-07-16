@@ -40,12 +40,12 @@ def geometricSample():
 
 def buildConfiguration(n):
     configuration = []
-    for i in range(1,n):  
+    for i in range(1,n):
         x = random.randint(int(.05*dispSize[0]), dispSize[0] - int(.05*dispSize[0]) - diameter)
         y = random.randint(int(.05*dispSize[1]), dispSize[1] - int(.05*dispSize[1]) - diameter)
         rect = pygame.Rect(x,y,diameter,diameter)
         if rect.collidelist(configuration) == -1:
-            configuration.append(rect)            
+            configuration.append(rect)
     return configuration
 
 def buildConfigurations():
@@ -63,11 +63,12 @@ def drawDots(drawer, configuration):
     drawer.screenFlip()
     pygame.time.wait(250)
     for rect in configuration:
-        pygame.draw.circle(drawer.screen, (255,0,0), rect.center, diameter/2, 0)
+        # pygame.draw.circle(drawer.screen, (255,0,0), rect.center, diameter/2, 0)
+        pygame.draw.circle(drawer.screen, (255,0,0), rect.center, int(diameter/2), 0) #erikb
     drawer.screenFlip()
     pygame.time.wait(250)
     drawer.screenFill((white))
-    drawer.screenFlip()    
+    drawer.screenFlip()
 
 def runExperiment(f):
     feedback = False
@@ -100,13 +101,13 @@ def runExperiment(f):
                     points = max(0, round(10 - 10*(abs(math.log10(len(configuration)) - math.log10(answer)))))
                 if len(configuration) > 30:
                     points = (round(10**(a*(math.log10(answer) - math.log10(30)) + math.log10(30))))/10
-                print points
+                print(points) #eb
                 tot_points += points
                 instruct(drawer, ['You scored %d points for a total of %d!' % (points, tot_points),
                                   'press ENTER or SPACE to continue'])
                 f.write('%d,%d,%d,%r,%f,%d,%.2f\n' % (part+1,len(configuration),answer,feedback,a,points,resp_time))
         if part+1 == parts and feedback == False:
-            instruct(drawer, ['You are done with the experiment!',  
+            instruct(drawer, ['You are done with the experiment!',
                               'press ENTER or SPACE to exit.'])
         if (part+1 != parts) and feedback == True:
             instruct(drawer, ['You are done with %d/%d of the experiment!' % (part+1,parts),
@@ -116,32 +117,32 @@ def runExperiment(f):
         if (part+1 != parts) and feedback == False:
             instruct(drawer, ['You are done with %d/%d of the experiment!' % (part+1,parts),
                               'You can now briefly stretch and then',
-                              'press ENTER or SPACE to continue']) 
+                              'press ENTER or SPACE to continue'])
         feedback = not feedback
-                    
+
 def checkInput(instr, nextchar):
     if len(instr) != 5:
         return True
     else:
         return False
     return True
-    
+
 def inputValue():
     # Set up the string
     instr = ''
     font = pygame.font.Font(None, 55)
-    
+
     # Define the width of the text box:
     width = font.size('9999999')[0]
-    
+
     # Draw a white background box for the rectangle
     bkrect = pygame.Rect(screen.get_rect().width/2 - width/5, screen.get_rect().height/2, width, font.get_linesize())
     screen.fill(white, bkrect)
-    
+
     # Draw the text onto the rectangle
     txt = font.render('#' + instr, True, black)
     screen.blit(txt, bkrect)
-    
+
     # Get alphanumeric key presses
     while True:
         for event in pygame.event.get():
@@ -165,11 +166,11 @@ def inputValue():
             if event.type == pygame.QUIT:
                 pygame.display.quit()
                 sys.exit(0)
-            
+
         # Redraw the text
         bkrect = pygame.Rect(screen.get_rect().width/2 - width/5, screen.get_rect().height/2, width, font.get_linesize())
         screen.fill(white, bkrect)
-    
+
         # Draw the text onto the rectangle
         txt = font.render('# ' + instr, True, black)
         screen.blit(txt, bkrect)
@@ -183,17 +184,18 @@ def displayText(text, top, size, color):
     # rectangular bitmap for text
     textRect = font.render(text, True, color)
     # where the text rectangle will be flipped
-    textpos = textRect.get_rect(centerx = screen.get_rect().centerx) 
+    textpos = textRect.get_rect(centerx = screen.get_rect().centerx)
     textpos.top = top
     # Block image transfer (combines 2 bitmaps : screen and textRect)
-    screen.blit(textRect, textpos) 
+    screen.blit(textRect, textpos)
     pygame.display.flip()
 
 # Initialize the game engine
 pygame.init()
 # Get subject ID and set up a file
-subject = raw_input('Enter subject ID here: ')
-print 'Subject ID is:', subject
+# subject = raw_input('Enter subject ID here: ')
+subject = input('Enter subject ID here: ') #eb
+print('Subject ID is:', subject) # eb
 # Set up output
 f = open(subject + '.csv', 'w')
 fname = subject + '.csv'
@@ -219,11 +221,10 @@ instruct(drawer, ['Welcome to the Experiment!',
                   'press ENTER or SPACE to start.'])
 
 runExperiment(f)
-# how long does the experiment take               
-print "expt done; time = %.2f minutes" % (int(time.time() - stime)/60.0)
+# how long does the experiment take
+print("expt done; time = %.2f minutes" % (int(time.time() - stime)/60.0)) # eb
 
 pygame.quit()
 sys.exit(0)
 # Movie the file into the Output folder when the experiment is over.
-shutil.move(cwd + fname , dst)  
-
+shutil.move(cwd + fname , dst)

@@ -5,14 +5,14 @@
 #' in slope correlations for participant data can be thought of (and modeled in a basic sense) as an MCMC-like sampling process.
 #' 
 #' This can be run all by itself and should produce all the graphs necessary for mcmc simulated data.
-#' To get the equivalent participant data, clear the variable set and run `fit.models.2014-06-02.R`. 
+#' To get the equivalent participant data, clear the variable set and run `numberline/numexpt/R/fit.models.2014-06-02.R`. 
 #' This will read in and fit the participant data (may be possible to just load the Rdata file it writes to).
-#' Next run `fit.block-models.2014-06-02.R` to get participant graphs that are equivalent to the ones produced here. 
+#' Next run `numberline/numexpt/R/fit.block-models.2014-06-02.R` to get participant graphs that are equivalent to the ones produced here. 
 #' Much of the code in this file is copied or adapted from the above two files.
 
 
 
-setwd("/Users/erikbrockbank/web/vullab/numberline/numexpt/R/")
+setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
 rm(list=ls())
 
 library(stats4)
@@ -24,7 +24,7 @@ library(tidyverse)
 #################
 
 # Copied from fit.models.2014-06-02.R
-data.path = "../data/"
+data.path = "../numexpt/data/"
 files <- list.files(data.path)
 data <- data.frame()
 subject <- 1
@@ -64,8 +64,8 @@ glimpse(data)
 #' were not provided as direct feedback for any one guess
 
 
-load('model.fits.Rdata') # Avoids having to re-fit model just for looking at data
-#load('../../num-density.2013-06/R/fit-block-models.Rdata') # Necessary for graph below
+load('../numexpt/R/model.fits.Rdata') # Avoids having to re-fit model just for looking at data
+#load('../num-density.2013-06/R/fit-block-models.Rdata') # Necessary for graph below
 # Copying these here instead of loading the above
 my.log.breaks = function(lims){
   majors = seq(floor(log10(lims[1])), ceiling(log10(lims[2])), by = 1)

@@ -16,7 +16,7 @@ rm(list=ls())
 library(Rmisc) # needed for call to `multiplot`
 # Fetch relevant model functions from samples_model
 source('samples_model-fxns_basic.R')
-# Fetch relevant functions for fittig lines to model data
+# Fetch relevant functions for fitting lines to model data
 source('samples_model-fxns_drift.R')
 
 
@@ -255,7 +255,7 @@ bipower.fits.mod.low = bipower.fits.mod.low %>%
 
 # Get predictions based on model fits
 predictions = data.frame()
-for (s in unique(subj.data$subject)){
+for (s in unique(subj.data$subject)) {
   stims = seq(1, 300, by = 1)
   # subject params, static
   biparams.subj = bipower.fits.subj[bipower.fits.subj$subject == s,]

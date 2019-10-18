@@ -22,7 +22,6 @@ source('samples_model-fxns_drift.R')
 ### ANALYSIS FUNCTIONS ###
 ##########################
 
-
 plot.human.fit.scatter = function(subj.slopes) {
   ggplot(data = subj.slopes, aes(x = cutoff, y = slope)) +
     geom_point(size = 3, alpha = 0.5, color = "blue") +
@@ -38,6 +37,7 @@ plot.human.fit.scatter = function(subj.slopes) {
           strip.text = element_text(face = "bold", size = 20))
 }
 
+
 ################
 ### ANALYSIS ###
 ################
@@ -47,11 +47,10 @@ data = read.data(DATA, TRIALS)
 
 subj.data = data %>%
   select(subject, trial, num_dots, answer)
-  #filter(subject %in% c(1,2)) # TODO remove this eventually
 
 
 # Run multiple iterations of slope fitting
-ITERS = 10
+ITERS = 25
 slope.fits = data.frame(subj = character(),
                         iter = numeric(),
                         cutoff = numeric(),
@@ -65,9 +64,15 @@ for (iter_index in seq(ITERS)) {
   names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
   
   PRIORS = list()
-  PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
-  PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
-  PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
+  # Uninformative priors
+  # PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
+  # PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
+  # PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
+  
+  # More rigid priors
+  PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
+  PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.1, log = T)} #
+  PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
   
   # Fit static subject data
   bipower.fits.subj = data.frame(do.call(rbind, by(subj.data, subj.data$subject, brutefit)))
@@ -77,7 +82,6 @@ for (iter_index in seq(ITERS)) {
                                             cutoff = 10^bipower.fits.subj$a,
                                             slope = 10^bipower.fits.subj$b,
                                             se = 10^bipower.fits.subj$s))
-  
 }
 
 

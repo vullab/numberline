@@ -406,3 +406,32 @@ run.model.individ.memories = function(data.path = DATA,
   
   return(data)
 }
+
+
+model.wrapper = function(nruns, model.fxn, ...) {
+  model.data = data.frame(
+    model.run = numeric(),
+    subject = character(),
+    trial = numeric(),
+    num_dots = numeric(),
+    answer = numeric(),
+    model.answer = numeric()
+  )
+  for (x in seq(1:nruns)) {
+    print(paste("######## Model run: ", x, " ########"))
+    data = model.fxn(...)
+    data = data %>%
+      mutate(model.run = x,
+             subj.repeated = subject + ((x - 1) * max(data$subject)))
+    model.data = rbind(model.data,
+                       data.frame(
+                         model.run = rep(x, nrow(data)),
+                         subject = data$subj.repeated,
+                         trial = data$trial,
+                         num_dots = data$num_dots,
+                         answer = data$model.answer
+                         ))
+  }
+  
+  return(model.data)
+}

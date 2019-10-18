@@ -70,14 +70,17 @@ brutefit = function(tmp) {
     iter = iter + 1
     
     if (!is.null(fit)) {
-      fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
+      # fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
+      fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
     } else {
       if (iter > 50) {
-        fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
+        # fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
+        fits = c(tmp$subject[1], -9999, 0, 0, 0, 0, 0, 0, 0)
       }      
     }
   }
-  names(fits) = c("subject", "logL", "n", "a", "b", "s")
+  # names(fits) = c("subject", "logL", "n", "a", "b", "s")
+  names(fits) = c("subject", "logL", "n", "a", "b", "s", "se.a", "se.b", "se.s")
   
   return(fits)
 }

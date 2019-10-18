@@ -8,8 +8,6 @@
 #' 
 
 #' TODO
-#' - consolidate plot themes (lots of overlap in global themes)
-#' - fix map.bipower to not to log transforms, allow for more flexible use with st. error
 #' - declare globals (or some variable...) for plots that look at limited subsets of trial blocks (some inline TODOs about this)
 #' - other general cleanup
 #' - migrate this to an rmarkdown for easier sharing?
@@ -19,11 +17,13 @@ setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
 rm(list=ls())
 
 library(tidyverse)
-library(ggplot2)
 library(reshape)
 library(psych) # needed for fisherz
 library(HardyWeinberg) # needed for ifisherz
 library(Rmisc)
+
+# taken from exp 1
+library(stats4) # for some reason we need this here for mle to work below
 
 
 ### GLOBALS ###
@@ -38,15 +38,51 @@ MAX_ESTIMATE = 1000 # max value for displaying number reported (note some estima
 PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
 names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
 PRIORS = list()
-PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
-PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.25, log = T)} #
-PRIORS[[3]] = function(x){-dnorm(x, -0.9, 0.1, log = T)} # 
+# PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
+# PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.25, log = T)} #
+# PRIORS[[3]] = function(x){-dnorm(x, -0.9, 0.1, log = T)} # 
 
 RUN_SHUFFLE_ANALYSIS = FALSE # whether to do shuffle analysis of data
 
 ### FUNCTIONS ###
 # Data processing functions
 to.num = function(x){as.numeric(as.character(x))}
+
+read.data = function(fp, col.names) {
+  files = list.files(fp)
+  dat = data.frame()
+  subject = 1
+  for (f in files) {
+    q = read.csv2(paste(fp, f, sep = ""), sep = "\t", header = T, colClasses = "character", skip = 1)
+    q$subject = subject
+    dat = rbind(dat, q)
+    subject = subject + 1
+  }
+  
+  names(dat) = col.names
+  
+  dat$trial = to.num(dat$trial)
+  dat$t.start = to.num(dat$t.start)
+  dat$time = to.num(dat$time) / 1000
+  dat$answer = to.num(dat$answer)
+  dat$num_dots = to.num(dat$num_dots)
+  dat$r.dot = to.num(dat$r.dot)
+  dat$r.space = to.num(dat$r.space)
+  dat$n.rings = to.num(dat$n.rings)
+  dat$feedback = to.num(dat$feedback)
+  dat$points = to.num(dat$points)
+  dat$score = to.num(dat$score)
+  dat$vary = as.character(dat$vary)
+  dat$vary[dat$vary == "space"] = "density" # NB: added this to make plots more clear (erikb)
+  dat$subject = as.numeric(dat$subject)
+
+  # Drop outliers
+  rs = rbind(by(dat, dat$subject, function(tmp){cor(tmp$num_dots, tmp$answer, method = "spearman")}))
+  dat = dat[!(dat$subject %in%  which(rs < COR_THRESHOLD)),] # drop subjects w/ less than COR_THRESHOLD correlation with true num_dots
+  #ns = rbind(by(dat, dat$subject, nrow)) # number of observations for each included subject
+  
+  return(dat)
+}
 
 ### Modeling functions ###
 
@@ -55,10 +91,18 @@ to.num = function(x){as.numeric(as.character(x))}
 map.bipower = function(x, a, b) {
   crit = a
   slope = 10^b
-  # slope = b
   lx = log10(x)
   ly = ((lx > crit) * (crit + (lx - crit) * slope) + (lx <= crit) * lx);
   return(10^ly)
+}
+
+# Highly similar function but takes in slope already raised to 10 for easier CI calcs
+map.bipower.ci = function(x, a, b) {
+  crit = a
+  slope = b
+  lx = x
+  ly = ((lx > crit) * (crit + (lx - crit) * slope) + (lx <= crit) * lx);
+  return(ly)
 }
 
 # general log likelihood function (with robustness)
@@ -88,15 +132,19 @@ brutefit = function(tmp) {
     iter = iter + 1
 
     if (!is.null(fit)) {
+      # print(fit)
+      # fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
       fits = c(tmp$subject[1], -0.5 * fit@m2logL, length(tmp$num_dots), fit@coef[,"Estimate"])
     } else {
       if (iter > 50) { # NB increase this for larger data than individual participants/blocks
       # if (iter > 500) {
         #print("Unable to fit slope")
+        # fits = c(tmp$subject[1], -9999, 0, 0, 0, 0, 0, 0, 0)
         fits = c(tmp$subject[1], -9999, 0, 0, 0, 0)
       }
     }
   }
+  # names(fits) = c("subject", "logL", "n", "a", "b", "s", "se.a", "se.b", "se.s")
   names(fits) = c("subject", "logL", "n", "a", "b", "s")
   return(fits)
 }
@@ -228,7 +276,7 @@ individ_plot_theme = theme(
   strip.text = element_text(face = "bold", size = 28),
   # backgrounds, lines
   panel.background = element_blank(),
-  #strip.background = element_blank(),
+  strip.background = element_blank(),
   
   panel.grid = element_line(color = "gray"),
   axis.line = element_line(color = "black"),
@@ -309,35 +357,7 @@ matrix_plot_theme = theme(
 
 ### DATA PROCESSING ###
 # NB: the below is mostly adapted from `/numberline/num-density.2013-06/R/load.density.data.R`
-
-files = list.files(DATA_FILEPATH)
-dat = data.frame()
-subject = 1
-for (f in files) {
-  q = read.csv2(paste(DATA_FILEPATH, f, sep = ""), sep = "\t", header = T, colClasses = "character", skip = 1)
-  q$subject = subject
-  dat = rbind(dat, q)
-  subject = subject + 1
-}
-
-names(dat) = COLNAMES
-
-
-dat$trial = to.num(dat$trial)
-dat$t.start = to.num(dat$t.start)
-dat$time = to.num(dat$time) / 1000
-dat$answer = to.num(dat$answer)
-dat$num_dots = to.num(dat$num_dots)
-dat$r.dot = to.num(dat$r.dot)
-dat$r.space = to.num(dat$r.space)
-dat$n.rings = to.num(dat$n.rings)
-dat$feedback = to.num(dat$feedback)
-dat$points = to.num(dat$points)
-dat$score = to.num(dat$score)
-dat$vary = as.character(dat$vary)
-dat$vary[dat$vary == "space"] = "density" # NB: added this to make plots more clear (erikb)
-dat$subject = as.numeric(dat$subject)
-
+dat = read.data(DATA_FILEPATH, COLNAMES)
 MODALITIES = unique(dat$vary) # global assigned after reading in data
 
 glimpse(dat)
@@ -353,40 +373,34 @@ if (RUN_SHUFFLE_ANALYSIS) {
 }
 
 
-# Drop outliers
-rs = rbind(by(dat, dat$subject, function(tmp){cor(tmp$num_dots, tmp$answer, method = "spearman")}))
-dat = dat[!(dat$subject %in%  which(rs < COR_THRESHOLD)),] # drop subjects w/ less than COR_THRESHOLD correlation with true num_dots
-ns = rbind(by(dat, dat$subject, nrow)) # number of observations for each included subject
-
-glimpse(dat)
-length(unique(dat$subject))
-ns
-
 # NB: still some major outliers, see below.
 # These are mostly ignored by subsequent analyses when we e.g. fit calibration lines, but good to know they exist
-order(dat$answer, decreasing = T)[1:8]
-# TODO why doesn't the below show up in the process above?
-max(dat$answer)
-dat[dat$answer == max(dat$answer),]
+sort(dat$answer, decreasing = T)[1:25]
+dat$subject[dat$answer %in% sort(dat$answer, decreasing = T)[1:5]]
+# TODO Maybe we should get rid of subject 49...
 
 
 ### FIGURE: INDIVIDUAL DATA ###
 
 # graph example data for three individual subjects, chosen below
-subjects = c(12, 25, 36) # Sample subjects
-sdat = subset(dat, dat$subject %in% subjects)
-ggplot(sdat, aes(x = num_dots, y = answer)) +
-  geom_point(alpha = 0.25, color = "blue", size = 2) +
-  geom_abline(position = "identity") +
-  mylogx(c(1, MAX_PRESENTED)) +
-  mylogy(c(1, MAX_ESTIMATE)) +
-  ggtitle("Estimation data for sample participants") +
-  xlab("Number presented") +
-  ylab("Number reported") +
-  facet_wrap(~subject, ncol = 3) +
-  individ_plot_theme 
+sample.subjects = c(12, 25, 36) # Sample subjects
+strip.labels = c("12" = "Subject 12", "25" = "Subject 25", "36" = "Subject 36")
+
+dat %>%
+  filter(subject %in% sample.subjects) %>%
+  ggplot(aes(x = num_dots, y = answer)) +
+    geom_point(alpha = 0.25, color = "blue", size = 2) +
+    geom_abline(position = "identity") +
+    mylogx(c(1, MAX_PRESENTED)) +
+    mylogy(c(1, MAX_ESTIMATE)) +
+    ggtitle("Estimation data for sample participants") +
+    xlab("Number presented") +
+    ylab("Number reported") +
+    facet_wrap(~subject, ncol = 3, labeller = labeller(subject = strip.labels)) +
+    individ_plot_theme
 
 # graph all subjects in dat
+# NB: this can be slow
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.25, color = "blue", size = 0.5) +
   geom_abline(position = "identity") +
@@ -435,14 +449,53 @@ ggplot(dat, aes(x = num_dots, y = answer)) +
 
 
 ### FIGURE: SLOPE COMPARISONS BY MODALITY ###
+PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
+names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
+PRIORS = list()
+
+# Strong priors, seem to converge pretty well
+PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
+PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.05, log = T)} #
+PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
+
 
 fitsModality = list()
 for (i in 1:length(MODALITIES)) {
   A = (dat$vary == MODALITIES[i])
   tmp = subset(dat, A)
-  tmp$subject = i # aggregate over all subjects in slope fit
   fitsModality[[MODALITIES[i]]] = data.frame(do.call(rbind, by(tmp, tmp$subject, brutefit)))
   print(c(i, sum(fitsModality[[MODALITIES[i]]]$logL == -9999)))
+}
+
+for (i in 1:length(MODALITIES)) {
+  A = fitsModality[[MODALITIES[i]]]
+  print(MODALITIES[i])
+  print(paste("cutoff mean: ", mean(A$a)))
+  print(paste("cutoff sd: ", sd(A$a)))
+  print(paste("slope mean: ", mean(A$b)))
+  print(paste("slope sd: ", sd(A$b)))
+  fitsModality[[MODALITIES[i]]] = fitsModality[[MODALITIES[i]]] %>%
+    mutate(cutoff.trans = 10^a,
+           slope.trans = 10^b)
+}
+
+
+fitSummary = data.frame('vary' = character(),
+                        'obs' = numeric(),
+                        'cutoff.mean' = numeric(),
+                        'cutoff.se' = numeric(),
+                        'slope.mean' = numeric(),
+                        'slope.se' = numeric())
+for (i in 1:length(MODALITIES)) {
+  A = fitsModality[[MODALITIES[i]]]
+  fitSummary = rbind(fitSummary, data.frame(
+    vary = MODALITIES[i],
+    obs = length(unique(A$subject)),
+    cutoff.mean = mean(10^A$a),
+    cutoff.se = sd(10^A$a) / sqrt(length(unique(A$subject))),
+    slope.mean = mean(10^A$b),
+    slope.se = sd(10^A$b) / sqrt(length(unique(A$subject)))
+  ))
 }
 
 predictions = data.frame('vary' = character(),
@@ -451,31 +504,37 @@ predictions = data.frame('vary' = character(),
                          'prediction.ul' = numeric(),
                          'prediction.ll' = numeric())
 
-# NB: IMPORTANT the calls to map.bipower below require modifying map.bipower to take in a transformed b value and not compute log transform in the function
-# TODO fix this more cleanly (e.g. add s to map.bipower with default of NULL, when non-null compute b+/-s), or do all transforms in call to map.bipower
 for (i in 1:length(MODALITIES)) {
   true_vals = 1:MAX_PRESENTED
   predictions = rbind(predictions,
                       data.frame(vary = MODALITIES[i],
                                  num_dots = true_vals,
-                                 prediction = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b),
-                                 prediction.ul = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b + 10^fitsModality[[i]]$s),
-                                 prediction.ll = map.bipower(true_vals, fitsModality[[i]]$a, 10^fitsModality[[i]]$b - 10^fitsModality[[i]]$s)))
+                                 prediction = map.bipower.ci(true_vals, 
+                                                             fitSummary$cutoff.mean[fitSummary$vary == MODALITIES[i]], 
+                                                             fitSummary$slope.mean[fitSummary$vary == MODALITIES[i]]),
+                                 prediction.ul = map.bipower.ci(true_vals, 
+                                                                fitSummary$cutoff.mean[fitSummary$vary == MODALITIES[i]], 
+                                                                fitSummary$slope.mean[fitSummary$vary == MODALITIES[i]] +
+                                                                  fitSummary$slope.se[fitSummary$vary == MODALITIES[i]]),
+                                 prediction.ll = map.bipower.ci(true_vals, 
+                                                                fitSummary$cutoff.mean[fitSummary$vary == MODALITIES[i]], 
+                                                                fitSummary$slope.mean[fitSummary$vary == MODALITIES[i]] -
+                                                                  fitSummary$slope.se[fitSummary$vary == MODALITIES[i]])))
   
 }
 
 # POSTER FIGURE 1
 ggplot(dat, aes(x = num_dots, y = answer)) +
   geom_point(color = "blue", size = 2, alpha = 0.05) +
-  #geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 1) +
+  geom_point(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 1) +
   geom_line(data = predictions, aes(x = num_dots, y = prediction), color = "red", size = 2) +
-  geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, alpha = 0.5) +
-  geom_abline(position = "identity") +
+  geom_ribbon(data = predictions, mapping = aes(x = num_dots, ymin = prediction.ll, ymax = prediction.ul), inherit.aes = FALSE, color = "red", size = 2, alpha = 0.75) +
+  geom_abline(position = "identity", alpha = 0.5) +
   mylogx(c(1, MAX_PRESENTED)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  #ggtitle("Accuracy across estimate conditions") +
+  ggtitle("Accuracy across estimate conditions") +
   individ_plot_theme +
   facet_wrap(~vary, ncol = 3,
              labeller = labeller(vary = c("area" = "Area trials", "size" = "Size trials", "density" = "Density trials")))
@@ -675,7 +734,7 @@ ggplot(subjectsDat, aes(x = num_dots, y = answer)) +
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  #ggtitle("Fitted slopes for sample participants") +
+  ggtitle("Fitted slopes for sample participants") +
   individ_plot_theme +
   facet_grid(subject~vary, scales = "free",
              labeller = labeller(subject = c("2" = "Subject 2", "31" = "Subject 31", "47" = "Subject 47"),
@@ -850,7 +909,8 @@ for (i in 1:length(MODALITIES)) {
 
 df.slopes = df.slopes %>%
   filter(as.numeric(block) %in% 1:11)
-  
+
+dat.subject$block = as.numeric(dat.subject$block)
 dat.subject %>%
   ggplot(aes(x = num_dots, y = answer)) +
   geom_point(alpha = 0.5, size = 1.5, color = "blue") +
@@ -859,9 +919,14 @@ dat.subject %>%
   mylogy(c(1, MAX_ESTIMATE)) +
   xlab("Number presented") + 
   ylab("Number reported") + 
-  ggtitle("Sample slope estimates by block, modality") +
+  ggtitle("Sample slope estimates by trial block, modality") +
   medium_plot_theme +
-  facet_grid(as.numeric(block)~vary, scales = "free")
+  theme(strip.background = element_blank()) +
+  facet_grid(vary~block, scales = "free",
+             labeller = labeller(block = c("1" = "Block 1", "2" = "Block 2", "3" = "Block 3", "4" = "Block 4",
+                                           "5" = "Block 5", "6" = "Block 6", "7" = "Block 7", "8" = "Block 8",
+                                           "9" = "Block 9", "10" = "Block 10", "11" = "Block 11"),
+                                 vary = c("area" = "Area trials", "size" = "Size trials", "density" = "Density trials")))
 
 
 ### FIGURE: SLOPE CORRELATION MATRICES, ALL COMPARISONS ###

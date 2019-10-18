@@ -235,9 +235,9 @@ PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
 names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
 
 PRIORS = list()
-PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
-PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
-PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
+PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
+PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.1, log = T)} #
+PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
 
 # Fit subject data
 bipower.fits.subj = data.frame(do.call(rbind, by(subj.data, subj.data$subject, brutefit)))
@@ -253,12 +253,14 @@ bipower.fits.mod
 bipower.fits.subj = bipower.fits.subj %>%
   mutate(cutoff.trans = 10^a,
          slope.trans = 10^b,
-         slope.error.trans = 10^s)
+         cutoff.error.trans = se.a,
+         slope.error.trans = se.b)
 
 bipower.fits.mod = bipower.fits.mod %>%
   mutate(cutoff.trans = 10^a,
          slope.trans = 10^b,
-         slope.error.trans = 10^s)
+         cutoff.error.trans = se.a,
+         slope.error.trans = se.b)
 
 # Summary data structure used in subject/model comparison scatterplot
 bipower.fits.mod.summary = bipower.fits.mod %>%
@@ -293,15 +295,6 @@ subj.data.agg = subj.data
 subj.data.agg$subject = 1 # set one subject for all data points
 
 
-PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
-names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
-
-PRIORS = list()
-PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
-PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
-PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
-
-
 # Fit slopes for model estimates in aggregate
 fits.agg.mod = data.frame(do.call(rbind, by(model.data.agg, model.data.agg$subject, brutefit)))
 print(paste("Failed bipower fits:", sum(fits.agg.mod$logL == -9999)))
@@ -317,10 +310,10 @@ true_vals = 1:MAX_ESTIMATE
 predictions.agg = data.frame('num_dots' = true_vals,
                          'prediction.mod' = map.bipower.ci(true_vals, fits.agg.mod$a, 10^fits.agg.mod$b),
                          'prediction.subj' = map.bipower.ci(true_vals, fits.agg.subj$a, 10^fits.agg.subj$b),
-                         'prediction.ul.mod' = map.bipower.ci(true_vals, fits.agg.mod$a, 10^fits.agg.mod$b + 10^fits.agg.mod$s),
-                         'prediction.ll.mod' = map.bipower.ci(true_vals, fits.agg.mod$a, 10^fits.agg.mod$b - 10^fits.agg.mod$s),
-                         'prediction.ul.subj' = map.bipower.ci(true_vals, fits.agg.subj$a, 10^fits.agg.subj$b + 10^fits.agg.subj$s),
-                         'prediction.ll.subj' = map.bipower.ci(true_vals, fits.agg.subj$a, 10^fits.agg.subj$b - 10^fits.agg.subj$s))
+                         'prediction.ul.mod' = map.bipower.ci(true_vals, fits.agg.mod$a, 10^(fits.agg.mod$b + fits.agg.mod$se.b)),
+                         'prediction.ll.mod' = map.bipower.ci(true_vals, fits.agg.mod$a, 10^(fits.agg.mod$b - fits.agg.mod$se.b)),
+                         'prediction.ul.subj' = map.bipower.ci(true_vals, fits.agg.subj$a, 10^(fits.agg.subj$b + fits.agg.subj$se.b)),
+                         'prediction.ll.subj' = map.bipower.ci(true_vals, fits.agg.subj$a, 10^(fits.agg.subj$b - fits.agg.subj$se.b)))
 
 
 
@@ -371,4 +364,7 @@ multiplot(cutoff.plot, slopes.plot, cols = 2)
 # Plot model and subject data aggregate fits, marginalized over individual subjects
 marginal.comparison.plot = plot.fits.marginalized(subj.data.agg, model.data.agg, predictions.agg)
 marginal.comparison.plot
+
+
+save(subj.data, model.data, predictions, bipower.fits.subj, bipower.fits.mod.summary, subj.data.agg, model.data.agg, predictions.agg, file="samples_model_bilinear.RData")
 

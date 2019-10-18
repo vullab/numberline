@@ -13,7 +13,8 @@
 setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
 rm(list=ls())
 
-library(Rmisc) # needed for call to `multiplot`
+library(viridis)
+
 # Fetch relevant model functions from samples_model
 source('samples_model-fxns_basic.R')
 # Fetch relevant functions for fitting lines to model data
@@ -23,6 +24,31 @@ source('samples_model-fxns_drift.R')
 ##########################
 ### ANALYSIS FUNCTIONS ###
 ##########################
+
+get.split.half.cor = function(data) {
+  data = data %>%
+    group_by(subject) %>%
+    # mutate(split.half = as.numeric(trial %% 2 == 0)) %>% # this is just a stand-in, we shuffle these below
+    # mutate(split.half = replace(split.half, values = sample(split.half, length(split.half), replace = F)))
+    mutate(split.half = trial <= max(data$trial) / 2)
+  
+  # Fit subject split half estimates
+  d0 = data %>%
+    filter(split.half == 0)
+  d1 = data %>%
+    filter(split.half == 1)
+  
+  split.half.fits.0 = data.frame(do.call(rbind, by(d0, d0$subject, brutefit)))
+  print(paste("Failed split half fits:", sum(split.half.fits.0$logL == -9999)))
+
+  split.half.fits.1 = data.frame(do.call(rbind, by(d1, d1$subject, brutefit)))
+  print(paste("Failed split half fits:", sum(split.half.fits.1$logL == -9999)))
+
+  split.half.corrs = cor.test(split.half.fits.0$b, split.half.fits.1$b)
+  
+  return(split.half.corrs)
+}
+
 
 # Graphing functions
 my.log.breaks = function(lims){
@@ -93,15 +119,25 @@ plot.model.comparison.histogram = function(model.slopes.low, model.slopes.high, 
     geom_histogram(data = model.slopes.high, aes(x = slope.trans, color = "model.high", fill = "model.high"),
                    alpha = 0.5,
                    binwidth = 0.05) +
-    geom_vline(xintercept = mean(subj.slopes$slope.trans), color = "black", linetype = "dashed", size = 1) +
-    scale_color_manual(name = element_blank(), 
-                       labels = c("model.low" = "low variability model", 
+    geom_vline(xintercept = mean(subj.slopes$slope.trans), color = "black", linetype = "dashed", size = 2) +
+    scale_color_manual(name = element_blank(),
+                       labels = c("model.low" = "low variability model",
                                   "model.high" = "high variability model"),
                        values = c("model.low" = "red", "model.high" = "blue")) +
-    scale_fill_manual(name = element_blank(), 
+    scale_fill_manual(name = element_blank(),
                       labels = c("model.low" = "low variability model",
                                  "model.high" = "high variability model"),
                       values = c("model.low" = "red", "model.high" = "blue")) +
+    # scale_color_viridis(name = element_blank(), 
+    #                    labels = c("model.low" = "low variability model", 
+    #                               "model.high" = "high variability model"),
+    #                    discrete = T, 
+    #                    begin = 0, end = 0.5) +
+    # scale_fill_viridis(name = element_blank(), 
+    #                   labels = c("model.low" = "low variability model",
+    #                              "model.high" = "high variability model"),
+    #                   discrete = T,
+    #                   begin = 0, end = 0.5) +
     ggtitle("Comparing model slope variability") +
     labs(x = "Fitted bilinear slope") +
     individ_plot_theme
@@ -131,7 +167,6 @@ plot.model.human.comparison.histogram = function(model.slopes, subj.slopes, plot
 }
 
 plot.model.comparison.scatter = function(model.slopes.low, model.slopes.high, subj.slopes) {
-  # TODO add dot with vertical and horizontal error bars for human averages
   ggplot() +
     geom_point(data = model.slopes.low, aes(x = cutoff.trans, y = slope.trans, color = "model.low"),
                size = 3) +
@@ -184,137 +219,153 @@ plot.model.human.comparison.scatter = function(model.slopes, subj.slopes, plot.t
     individ_plot_theme
 }
 
-
-##################
-### RUN MODELS ###
-##################
-
-
-data.model.high.var = run.model.individ.memories(n.memories = 10)
-
-data.model.low.var = run.model.individ.memories(n.memories = 1000)
-
-
-subj.data = data.model.high.var %>% # can use either here
-  select(subject, trial, num_dots, answer)
-  
-model.data.high.var = data.model.high.var %>%
-  select(subject, trial, num_dots, model.answer) %>%
-  mutate(answer = model.answer) # align column names to match participant data
-
-model.data.low.var = data.model.low.var %>%
-  select(subject, trial, num_dots, model.answer) %>%
-  mutate(answer = model.answer) # align column names to match participant data
+plot.model.human.split.half = function(split.half.corrs) {
+  split.half.corrs %>%
+    ggplot(aes(x = fct_reorder(source, mean.corr, .desc = TRUE), y = mean.corr, fill = source)) +
+    geom_bar(stat = "identity", width = 0.5) +
+    geom_errorbar(aes(ymin = lower.corr, ymax = upper.corr), width = 0.25) +
+    labs(x = "", y = "Fitted slope correlation") +
+    ggtitle("Split half model comparison") +
+    individ_plot_theme +
+    scale_fill_viridis(discrete = T,
+                       labels = c("subjects" = "subjects",
+                                  "model.high.var" = "high variability model",
+                                  "model.low.var" = "low variability model",
+                                  "model.baseline" = "baseline model")) +
+    theme(axis.text.x = element_blank(),
+          legend.title = element_blank())
+}
 
 
 
-
-################
-### ANALYSIS ###
-################
+###############
+### GLOBALS ###
+###############
 
 PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2)
 names(PARAMS) = c("ma", "sa", "mb", "sb", "ms", "ss")
 
 PRIORS = list()
-PRIORS[[1]] = function(x){-dnorm(x, 2, 3.5, log = T)}
-PRIORS[[2]] = function(x){-dnorm(x, 0, 0.5, log = T)}
-PRIORS[[3]] = function(x){-dnorm(x, -1, 0.25, log = T)}
+PRIORS[[1]] = function(x){-dnorm(x, 1.5, 0.1, log = T)} #
+PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.1, log = T)} #
+PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
 
-# Fit static subject data
+MODEL_RUNS = 10 # NB: takes about 90s per model run
+
+
+
+###########################
+### ANALYSIS: SLOPE FIT ###
+###########################
+
+# Run models
+subj.data = run.model.baseline()
+subj.data = subj.data %>%
+  select(subject, trial, num_dots, answer)
+
+model.data.high.var = model.wrapper(nruns = 1,
+                                    model.fxn = run.model.individ.memories,
+                                    n.memories = 10)
+model.data.low.var = model.wrapper(nruns = 1,
+                                   model.fxn = run.model.individ.memories,
+                                   n.memories = 1000)
+
+# Fit cutoff, slope params
 bipower.fits.subj = data.frame(do.call(rbind, by(subj.data, subj.data$subject, brutefit)))
-print(paste("Failed bipower fits:", sum(bipower.fits.subj$logL == -9999)))
-bipower.fits.subj
-
-# Fit model data, high variability
 bipower.fits.mod.high = data.frame(do.call(rbind, by(model.data.high.var, model.data.high.var$subject, brutefit)))
-print(paste("Failed bipower fits:", sum(bipower.fits.mod.high$logL == -9999)))
-bipower.fits.mod.high
-
-# Fit model data, low variability
 bipower.fits.mod.low = data.frame(do.call(rbind, by(model.data.low.var, model.data.low.var$subject, brutefit)))
-print(paste("Failed bipower fits:", sum(bipower.fits.mod.low$logL == -9999)))
-bipower.fits.mod.low
 
 # Add columns transforming fits to non-log space
 bipower.fits.subj = bipower.fits.subj %>%
   mutate(cutoff.trans = 10^a,
-         slope.trans = 10^b,
-         slope.error.trans = 10^s)
+         slope.trans = 10^b)
 
 bipower.fits.mod.high = bipower.fits.mod.high %>%
   mutate(cutoff.trans = 10^a,
-         slope.trans = 10^b,
-         slope.error.trans = 10^s)
+         slope.trans = 10^b)
 
 bipower.fits.mod.low = bipower.fits.mod.low %>%
   mutate(cutoff.trans = 10^a,
-         slope.trans = 10^b,
-         slope.error.trans = 10^s)
+         slope.trans = 10^b)
 
-
-# Get predictions based on model fits
-predictions = data.frame()
-for (s in unique(subj.data$subject)) {
-  stims = seq(1, 300, by = 1)
-  # subject params, static
-  biparams.subj = bipower.fits.subj[bipower.fits.subj$subject == s,]
-  bipred.subj = (map.bipower(stims, biparams.subj$a, biparams.subj$b))
-  # model params, high var
-  biparams.mod.high = bipower.fits.mod.high[bipower.fits.mod.high$subject == s,]
-  bipred.mod.high = (map.bipower(stims, biparams.mod.high$a, biparams.mod.high$b))
-  # model params, low variability
-  biparams.mod.low = bipower.fits.mod.low[bipower.fits.mod.low$subject == s,]
-  bipred.mod.low = (map.bipower(stims, biparams.mod.low$a, biparams.mod.low$b))
-  predictions = rbind(predictions, 
-                      data.frame(subject = s, 
-                                 num_dots = stims,
-                                 bipred.subj = bipred.subj,
-                                 bipred.mod.high = bipred.mod.high,
-                                 bipred.mod.low = bipred.mod.low))
-}
-
-
-
-
-#############
-### PLOTS ###
-#############
-
-# View raw (summary) data for slope fits across models, human subjects
-summary(bipower.fits.mod.low$slope.trans)
-sd(bipower.fits.mod.low$slope.trans)
-summary(bipower.fits.mod.high$slope.trans)
-sd(bipower.fits.mod.high$slope.trans)
-summary(bipower.fits.subj$slope.trans)
-sd(bipower.fits.subj$slope.trans)
-
-
-
-### Sanity check ###
-
-# plot estimates by subject for human, model data (sanity check)
-plot.estimates.all(subj.data, "Estimates from subjects")
-plot.estimates.all(model.data.high.var, "Estimates from high variability model")
-plot.estimates.all(model.data.low.var, "Estimates from low variability model")
-
-
-### Comparing models ###
 
 # Histogram of model fits compared against each other
 plot.model.comparison.histogram(bipower.fits.mod.low, bipower.fits.mod.high, bipower.fits.subj)
-# Scatterplot of model fits (slope and intercept) compared against each other
-plot.model.comparison.scatter(bipower.fits.mod.low, bipower.fits.mod.high, bipower.fits.subj)
 
 
-### Comparing model and human fits ###
 
-# Histogram of *high* variability model fits and human data
-plot.model.human.comparison.histogram(bipower.fits.mod.high, bipower.fits.subj, "High variability model and human slope distributions")
-# Histogram of *low* variability model fits and human data (may not be necessary)
-plot.model.human.comparison.histogram(bipower.fits.mod.low, bipower.fits.subj, "Low variability model and human slope distributions")
+######################################
+### ANALYSIS: SPLIT HALF SLOPE FIT ###
+######################################
 
-# Scatterplot of *high* variability model fits (slope and intercept) and human data (may not be necessary)
-plot.model.human.comparison.scatter(bipower.fits.mod.high, bipower.fits.subj, "High variability model and human cutoff and slope values")
-# Scatterplot of *low* variability model fits (slope and intercept) and human data (may not be necessary)
-plot.model.human.comparison.scatter(bipower.fits.mod.low, bipower.fits.subj, "Low variability model and human cutoff and slope values")
+# Overall structure for storing correlation values
+split.half.corrs = data.frame(source = character(), 
+                              model.run = numeric(),
+                              corr = numeric(), 
+                              lower.ci = numeric(), 
+                              upper.ci = numeric())
+
+for (x in seq(1:MODEL_RUNS)) {
+  print(paste("######## CYCLE: ", x, " ########")) # approx. 5 mins / cycle
+  # Run models
+  subj.data = run.model.baseline()
+  subj.data = subj.data %>%
+    select(subject, trial, num_dots, answer)
+  
+  model.data.high.var = model.wrapper(nruns = 1,
+                                      model.fxn = run.model.individ.memories,
+                                      n.memories = 10)
+  model.data.low.var = model.wrapper(nruns = 1,
+                                     model.fxn = run.model.individ.memories,
+                                     n.memories = 1000)
+  model.data.baseline = model.wrapper(nruns = 1,
+                                      model.fxn = run.model.baseline)
+  
+  # Get split half correlations
+  subj.cors = get.split.half.cor(subj.data)
+  model.data.high.var.cors = get.split.half.cor(model.data.high.var)
+  model.data.low.var.cors = get.split.half.cor(model.data.low.var)
+  model.baseline.cors = get.split.half.cor(model.data.baseline)
+  
+  # Update aggregate data frame of split half corrs
+  split.half.corrs = rbind(split.half.corrs, data.frame(source = "subjects", 
+                                                        model.run = x,
+                                                        corr = subj.cors$estimate,
+                                                        lower.ci = subj.cors$conf.int[1],
+                                                        upper.ci = subj.cors$conf.int[2]))
+  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.high.var", 
+                                                        model.run = x,
+                                                        corr = model.data.high.var.cors$estimate,
+                                                        lower.ci = model.data.high.var.cors$conf.int[1],
+                                                        upper.ci = model.data.high.var.cors$conf.int[2]))
+  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.low.var", 
+                                                        model.run = x,
+                                                        corr = model.data.low.var.cors$estimate,
+                                                        lower.ci = model.data.low.var.cors$conf.int[1],
+                                                        upper.ci = model.data.low.var.cors$conf.int[2]))
+  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.baseline", 
+                                                        model.run = x,
+                                                        corr = model.baseline.cors$estimate,
+                                                        lower.ci = model.baseline.cors$conf.int[1],
+                                                        upper.ci = model.baseline.cors$conf.int[2]))
+}
+
+
+# Summarize many model runs above
+split.half.summary = split.half.corrs %>%
+  group_by(source) %>%
+  summarize(mean.corr = mean(corr),
+            n.obs = n(),
+            corr.sd = sd(corr),
+            corr.se = sd(corr) / sqrt(n.obs),
+            lower.corr = mean.corr - corr.se,
+            upper.corr = mean.corr + corr.se)
+
+# Bar plot of correlations over multiple runs above
+plot.model.human.split.half(split.half.summary)
+
+
+
+# Save data
+save(split.half.corrs, split.half.summary, bipower.fits.mod.low, bipower.fits.mod.high, bipower.fits.subj, file="samples_model_individual_var.RData")
+

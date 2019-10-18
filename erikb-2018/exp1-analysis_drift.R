@@ -448,6 +448,35 @@ ggplot(data = df.slopes, aes(x = x, y = mean.slope)) +
 
 # TODO is it a problem that people seem to get worse over the course of the experiment?
 
+# Analysis: make sure people's estimates aren't getting more "fine tuned"
+# (plot residuals against predictions by block)
+data = data %>% # add block col to data
+  mutate(block = splitBlock(trial, BLOCKSIZE[1], TRIALS) + 1)
+
+data = data %>%
+  # need to group by variables that give us one row at a time in `data` for list indexing in fitsBlock.subj
+  group_by(subject, trial) %>%
+  mutate(block.cutoff = fitsBlock.subj[[block]]$a[fitsBlock.subj[[block]]$subject == subject],
+         block.slope = fitsBlock.subj[[block]]$b[fitsBlock.subj[[block]]$subject == subject],
+         block.pred = map.bipower(num_dots, block.cutoff, block.slope),
+         block.residsq = (block.pred - answer)^2) %>%
+  filter(block.residsq < 100000) # is this necessary?
+
+data.block.preds.summary = data %>%
+  group_by(block) %>%
+  summarize(mean.residsq = mean(block.residsq),
+            num.subj = length(unique(subject)),
+            se.residsq = sd(block.residsq) / num.subj)
+
+data.block.preds.summary %>%
+  ggplot(aes(x = block, y = mean.residsq)) +
+  geom_line(color = "blue") +
+  geom_point(color = "blue") +
+  geom_ribbon(aes(ymin = mean.residsq - se.residsq, ymax = mean.residsq + se.residsq),
+              color = "gray", alpha = 0.3) +
+  labs(x = "trial block", y = "squared residual of estimates") +
+  individ_plot_theme
+  
 
 
 fitsMod.subj = slopes[["mod"]]

@@ -198,7 +198,7 @@ PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.1, log = T)} #
 PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
 
 
-MODEL_RUNS = 1
+MODEL_RUNS = 10
 
 
   

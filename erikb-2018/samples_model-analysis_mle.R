@@ -1,5 +1,7 @@
 ### README ###
-#' This file confirms the slope and cutoff fit across subject and model estimates.
+#' This file examines the slope and cutoff fit across subject and model estimates
+#' by running iterated fits of slope and cutoff and looking at how much fits
+#' vary by subject.
 #' 
 #' It uses functions in `samples_model-fxns_basic` to read the data and
 #' then uses more advanced functions in `samples_model-fxns_drift` to

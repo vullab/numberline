@@ -81,13 +81,13 @@ plot.mse = function(data) {
 ################
 
 # MODEL GLOBALS
-model = run.model.baseline # model to use for this analysis
-p.bumper = 0.9 # set bumper probability manually for this analysis (don't use default)
+model.fxn = run.model.baseline # model to use for this analysis
+p.bumper = 1.0 # set bumper probability manually for this analysis (don't use default)
 
 # MSE GLOBALS
 save.data = FALSE # whether to save the data afterwards
 min.samples = 1 # lower bound on samples tested in MSE calculations
-max.samples = 2 # upper bound on samples tested in MSE calculations
+max.samples = 25 # upper bound on samples tested in MSE calculations
 
 # NB: this can take a while!! (approx. 60 seconds per run, but this increases as N_SAMPLES increases)
 mse.df = data.frame('N' = numeric(), 'p' = numeric(), 'mse.subj' = numeric(), 'mse.mod' = numeric())
@@ -95,7 +95,7 @@ mse.df = data.frame('N' = numeric(), 'p' = numeric(), 'mse.subj' = numeric(), 'm
 for (n in seq(min.samples, max.samples)) {
   print(paste("Running model with N_SAMPLES = ", n, ", P_BUMPER = ", p.bumper))
   
-  data = model(n.samples = n,
+  data = model.fxn(n.samples = n,
                p.bumper = p.bumper)
   
   data = calculate.mse(data)

@@ -163,8 +163,7 @@ histogram.slopes.comparison = function(subj.fits, model.fits.summary) {
   subj.fits %>%
     ggplot(aes(x = slope.trans)) +
     geom_histogram(binwidth = 0.05, fill = I("grey"), col = I("black")) +
-    geom_vline(data = model.fits.summary, aes(xintercept = mean.slope), color = "red", linetype = "dashed") +
-    geom_vline(xintercept = 1.0, color = "black", linetype = "dashed") +
+    geom_vline(data = model.fits.summary, aes(xintercept = mean.slope), color = "red", linetype = "dashed", size = 2) +
     labs(x = "Fitted slopes (model in red)") +
     ggtitle("Model underestimation is similar to subjects") +
     individ_plot_theme +
@@ -177,7 +176,7 @@ histogram.cutoff.comparison = function(subj.fits, model.fits.summary) {
   subj.fits %>%
     ggplot(aes(x = cutoff.trans)) +
     geom_histogram(binwidth = 3, fill = I("grey"), col = I("black")) +
-    geom_vline(data = model.fits.summary, aes(xintercept = mean.cutoff), color = "red", linetype = "dashed") +
+    geom_vline(data = model.fits.summary, aes(xintercept = mean.cutoff), color = "red", linetype = "dashed", size = 2) +
     labs(x = "Fitted cutoffs (model in red)") +
     ggtitle("Model cutoff is similar to subjects") +
     individ_plot_theme +
@@ -213,9 +212,8 @@ plot.fits.marginalized = function(subj.data, model.data, predictions) {
 ##################
 ### RUN MODELS ###
 ##################
-p.bumper = 0.6
 
-data = run.model.baseline(p.bumper = p.bumper)
+data = run.model.baseline()
 
 # Select relevant data for subjects, base model, individual variability model
 subj.data = data %>%

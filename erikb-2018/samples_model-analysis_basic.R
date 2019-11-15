@@ -78,7 +78,7 @@ view.sample.data = function(data) {
   return(sample.results)
 }
 
-plot.sample.subjects = function(data, sample.subjects = c()) {
+plot.sample.subjects = function(data, sample.subjects = c(), label) {
   sample.subject.plot = data %>%
     filter(subject %in% sample.subjects,
            trial > N_SAMPLES) %>%
@@ -94,8 +94,7 @@ plot.sample.subjects = function(data, sample.subjects = c()) {
     mylogx(c(MIN_ESTIMATE, MAX_ESTIMATE)) +
     mylogy(c(MIN_ESTIMATE, MAX_ESTIMATE)) + 
     individ_plot_theme + # TODO pass this in to the parent function
-    facet_wrap(~subject, ncol = 3)
-  #labeller = labeller(subject = c("3" = "Subject 3", "7" = "Subject 7", "9" = "Subject 9")))
+    facet_wrap(~subject, ncol = 3, labeller = label)
   
   return(sample.subject.plot)
 }
@@ -177,7 +176,7 @@ plot.quartile.estimates = function(data) {
 ##################
 
 print(paste("Running model with CoV: ", calculate.cov(PERCEIVED_DOTS_NOISE_SD)))
-data.base = run.model.baseline()
+data.base = run.model.baseline(p.bumper = 1.0)
 data.iv = run.model.individ.memories()
 
 
@@ -193,9 +192,11 @@ sample.data.iv = view.sample.data(data.iv)
 
 
 # Graph three sample subjects and model estimates for a close look
-sample.subjects = c(6, 11, 22)
-sample.subj.plot.base = plot.sample.subjects(data.base, sample.subjects)
-sample.subj.plot.iv = plot.sample.subjects(data.iv, sample.subjects)
+# sample.subjects = c(6, 11, 22)
+sample.subjects = c(3, 7, 9)
+label = labeller(subject = c("3" = "Subject 3", "7" = "Subject 7", "9" = "Subject 9"))
+sample.subj.plot.base = plot.sample.subjects(data.base, sample.subjects, label)
+sample.subj.plot.iv = plot.sample.subjects(data.iv, sample.subjects, label)
 
 
 # Graph all subjects
@@ -215,7 +216,7 @@ quartile.plot.base = plot.quartile.estimates(data.iv)
 ### Print relevant plots/data ###
 # sample.data
 sample.subj.plot.base
-full.subj.plot.iv
+full.subj.plot.base
 # est.error.plot
 # quartile.plot
 

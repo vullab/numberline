@@ -1,8 +1,7 @@
-setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
-rm(list=ls())
 
 # Fetch relevant model and participant data from noisy_perception model
 source('samples_model-fxns_basic.R')
+
 
 ### README ###
 #' This file includes supporting functions for fitting lines to output from the samples_model.
@@ -156,10 +155,10 @@ get.cor.df = function(cor.matrix) {
 # Format data frame of correlations by block pair to show mean, se of correlations by block distance across blocks
 # NB: keep dplyr:: function designations to ensure that summarize is based on grouping
 # See https://stackoverflow.com/questions/26923862/why-are-my-dplyr-group-by-summarize-not-working-properly-name-collision-with
-get.distance.cors = function(cor.df) {
+get.distance.cors = function(cor.df, blocksizes) {
   dist.df = cor.df %>%
     dplyr::mutate(block.dist = block2 - block1,
-           trial.dist = 10 * block.dist) %>%
+           trial.dist = (TRIALS / blocksizes[1]) * block.dist) %>%
     dplyr::group_by(trial.dist) %>%
     dplyr::summarize(mean.cor = mean(slope.corr, na.rm = TRUE),
               se.cor = sd(slope.corr, na.rm = TRUE) / sqrt(length(slope.corr)))

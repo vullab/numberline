@@ -20,6 +20,8 @@ source('samples_model-fxns_basic.R')
 # Fetch relevant functions for fitting lines to model data
 source('samples_model-fxns_drift.R')
 
+DATA_FILE = "samples_model_individual_var.RData" # global here to keep reads/saves consistent
+# load(DATA_FILE)
 
 ##########################
 ### ANALYSIS FUNCTIONS ###
@@ -221,7 +223,8 @@ plot.model.human.comparison.scatter = function(model.slopes, subj.slopes, plot.t
 
 plot.model.human.split.half = function(split.half.corrs) {
   split.half.corrs %>%
-    ggplot(aes(x = fct_reorder(source, mean.corr, .desc = TRUE), y = mean.corr, fill = source)) +
+    # ggplot(aes(x = fct_reorder(source, mean.corr, .desc = TRUE), y = mean.corr, fill = source)) +
+    ggplot(aes(x = source, y = mean.corr, fill = source)) +
     geom_bar(stat = "identity", width = 0.5) +
     geom_errorbar(aes(ymin = lower.corr, ymax = upper.corr), width = 0.25) +
     labs(x = "", y = "Fitted slope correlation") +
@@ -299,7 +302,7 @@ plot.model.comparison.histogram(bipower.fits.mod.low, bipower.fits.mod.high, bip
 ######################################
 
 # Overall structure for storing correlation values
-split.half.corrs = data.frame(source = character(), 
+model.split.half.corrs = data.frame(source = character(), 
                               model.run = numeric(),
                               corr = numeric(), 
                               lower.ci = numeric(), 
@@ -308,10 +311,6 @@ split.half.corrs = data.frame(source = character(),
 for (x in seq(1:MODEL_RUNS)) {
   print(paste("######## CYCLE: ", x, " ########")) # approx. 5 mins / cycle
   # Run models
-  subj.data = run.model.baseline()
-  subj.data = subj.data %>%
-    select(subject, trial, num_dots, answer)
-  
   model.data.high.var = model.wrapper(nruns = 1,
                                       model.fxn = run.model.individ.memories,
                                       n.memories = 10)
@@ -322,37 +321,32 @@ for (x in seq(1:MODEL_RUNS)) {
                                       model.fxn = run.model.baseline)
   
   # Get split half correlations
-  subj.cors = get.split.half.cor(subj.data)
   model.data.high.var.cors = get.split.half.cor(model.data.high.var)
   model.data.low.var.cors = get.split.half.cor(model.data.low.var)
   model.baseline.cors = get.split.half.cor(model.data.baseline)
   
   # Update aggregate data frame of split half corrs
-  split.half.corrs = rbind(split.half.corrs, data.frame(source = "subjects", 
-                                                        model.run = x,
-                                                        corr = subj.cors$estimate,
-                                                        lower.ci = subj.cors$conf.int[1],
-                                                        upper.ci = subj.cors$conf.int[2]))
-  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.high.var", 
-                                                        model.run = x,
-                                                        corr = model.data.high.var.cors$estimate,
-                                                        lower.ci = model.data.high.var.cors$conf.int[1],
-                                                        upper.ci = model.data.high.var.cors$conf.int[2]))
-  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.low.var", 
-                                                        model.run = x,
-                                                        corr = model.data.low.var.cors$estimate,
-                                                        lower.ci = model.data.low.var.cors$conf.int[1],
-                                                        upper.ci = model.data.low.var.cors$conf.int[2]))
-  split.half.corrs = rbind(split.half.corrs, data.frame(source = "model.baseline", 
-                                                        model.run = x,
-                                                        corr = model.baseline.cors$estimate,
-                                                        lower.ci = model.baseline.cors$conf.int[1],
-                                                        upper.ci = model.baseline.cors$conf.int[2]))
+  model.split.half.corrs = rbind(model.split.half.corrs, data.frame(source = "model.high.var", 
+                                                                    model.run = x,
+                                                                    corr = model.data.high.var.cors$estimate,
+                                                                    lower.ci = model.data.high.var.cors$conf.int[1],
+                                                                    upper.ci = model.data.high.var.cors$conf.int[2]))
+  model.split.half.corrs = rbind(model.split.half.corrs, data.frame(source = "model.low.var", 
+                                                                    model.run = x,
+                                                                    corr = model.data.low.var.cors$estimate,
+                                                                    lower.ci = model.data.low.var.cors$conf.int[1],
+                                                                    upper.ci = model.data.low.var.cors$conf.int[2]))
+  model.split.half.corrs = rbind(model.split.half.corrs, data.frame(source = "model.baseline", 
+                                                                    model.run = x,
+                                                                    corr = model.baseline.cors$estimate,
+                                                                    lower.ci = model.baseline.cors$conf.int[1],
+                                                                    upper.ci = model.baseline.cors$conf.int[2]))
 }
 
-
 # Summarize many model runs above
-split.half.summary = split.half.corrs %>%
+detach(package:Rmisc)
+detach(package:plyr)
+model.split.half.summary = model.split.half.corrs %>%
   group_by(source) %>%
   summarize(mean.corr = mean(corr),
             n.obs = n(),
@@ -361,11 +355,30 @@ split.half.summary = split.half.corrs %>%
             lower.corr = mean.corr - corr.se,
             upper.corr = mean.corr + corr.se)
 
+# Generate single run of subject data
+subj.data = run.model.baseline()
+subj.data = subj.data %>%
+  select(subject, trial, num_dots, answer)
+subj.split.half.corrs = get.split.half.cor(subj.data)
+
+# Add subject data to summary
+model.split.half.summary = as.data.frame(model.split.half.summary)
+split.half.summary = rbind(data.frame(source = "subjects", 
+                                                      mean.corr = subj.split.half.corrs$estimate,
+                                                      n.obs = NA,
+                                                      corr.sd = NA,
+                                                      corr.se = NA,
+                                                      lower.corr = subj.split.half.corrs$conf.int[1],
+                                                      upper.corr = subj.split.half.corrs$conf.int[2]),
+                           model.split.half.summary)
+
+
+
 # Bar plot of correlations over multiple runs above
 plot.model.human.split.half(split.half.summary)
 
 
 
 # Save data
-save(split.half.corrs, split.half.summary, bipower.fits.mod.low, bipower.fits.mod.high, bipower.fits.subj, file="samples_model_individual_var.RData")
+save(model.split.half.corrs, subj.split.half.corrs, split.half.summary, bipower.fits.mod.low, bipower.fits.mod.high, bipower.fits.subj, file = DATA_FILE)
 

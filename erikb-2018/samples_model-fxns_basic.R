@@ -14,8 +14,6 @@
 #' 
 #' The model uses data from `numberline/numexpt`
 
-setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
-rm(list=ls())
 
 library(stats4)
 library(tidyverse)
@@ -45,14 +43,14 @@ PRIOR_EXP = -1 # exponential slope parameter for prior
 POSTERIOR_SAMPLE_EXP = 4 # exponent `l` to use when sampling from the posterior with probability p^l
 
 # params for sample of previous trials
-TRIALS_EXP = -4 # explonential slope parameter for sampling previous trials
+TRIALS_EXP = -1 # explonential slope parameter for sampling previous trials
 
 # params for sample of real world "bumpers"
 BUMPER_EXP = -4 # exponential slope parameter for sampling "bumper" values
 
 # hyperparams: number of samples and probability that samples are derived from real world bumpers
 N_SAMPLES = 20 # total number of samples to take from previous trials and "bumper" distribution
-P_BUMPER = 0.6 # probability p that a given sample comes from previous trials or real world "bumper" distribution
+P_BUMPER = 0.5 # probability p that a given sample comes from previous trials or real world "bumper" distribution
 
 N_MEMORIES = 30 # number of memories to use for individual variability model
 

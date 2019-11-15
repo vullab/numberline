@@ -11,7 +11,7 @@
 
 
 setwd("/Users/erikbrockbank/web/vullab/numberline/erikb-2018/")
-rm(list=ls())
+rm(list = ls())
 
 library(viridis)
 
@@ -19,6 +19,10 @@ library(viridis)
 source('samples_model-fxns_basic.R')
 # Fetch relevant functions for fittig lines to model data
 source('samples_model-fxns_drift.R')
+
+DATA_FILE = 'samples_model-drift.RData' # global here for easy loading/saving
+# load(DATA_FILE)
+save.data = FALSE # toggle to save data
 
 
 ##########################
@@ -171,11 +175,38 @@ plot.drift.composite = function(data.subj, data.model.base, data.model.iv) {
 
 plot.drift.ribbon = function(corr.data) {
   corr.data %>%
-    ggplot(aes(x = trial.dist, y = corr.mean, color = source)) +
-    geom_ribbon(stat = "identity", aes(ymin = corr.min, ymax = corr.max)) +
+    ggplot(aes(x = trial.dist, y = corr.mean, color = source, fill = source)) +
+    geom_ribbon(stat = "identity", aes(ymin = corr.min, ymax = corr.max), alpha = 0.5) +
+    geom_line() +
+    geom_point() +
     labs(x = "Distance (trials)", y = "Slope correlation") +
     scale_color_viridis(discrete = T,
+                        name = element_blank(),
                         labels = c("subjects" = "subjects", "model.base" = "model (baseline)", "model.iv" = "model (individual variability)")) +
+    scale_fill_viridis(discrete = T,
+                       name = element_blank(),
+                        labels = c("subjects" = "subjects", "model.base" = "model (baseline)", "model.iv" = "model (individual variability)")) +
+    drift_theme
+}
+
+
+plot.blocksize.comparison = function(agg.corr.data) {
+  agg.corr.data %>%
+    ggplot(aes(x = trial.dist, y = corr.mean, color = as.factor(blocksize), fill = as.factor(blocksize))) +
+    geom_ribbon(stat = "identity", aes(ymin = corr.min, ymax = corr.max), alpha = 0.5) +
+    geom_line() +
+    geom_point() +
+    labs(x = "Distance (trials)", y = "Slope correlation") +
+    scale_color_viridis(discrete = T,
+                        name = element_blank(),
+                        labels = c("3" = "3 blocks", "5" = "5 blocks", 
+                                   "10" = "10 blocks", "20" = "20 blocks", 
+                                   "30" = "30 blocks")) +
+    scale_fill_viridis(discrete = T,
+                       name = element_blank(),
+                       labels = c("3" = "3 blocks", "5" = "5 blocks", 
+                                  "10" = "10 blocks", "20" = "20 blocks", 
+                                  "30" = "30 blocks")) +
     drift_theme
 }
 
@@ -184,8 +215,6 @@ plot.drift.ribbon = function(corr.data) {
 ###############
 ### GLOBALS ###
 ###############
-
-save.data = FALSE # toggle to save data
 
 # Initialize params (mean a, var a, mean b, var b, mean s, var s)
 PARAMS = c(0.7, 1.5, -0.5, 0.2, -0.7, 0.2) 
@@ -198,9 +227,7 @@ PRIORS[[2]] = function(x){-dnorm(x, -0.2, 0.1, log = T)} #
 PRIORS[[3]] = function(x){-dnorm(x, -1, 0.1, log = T)} #
 
 
-MODEL_RUNS = 10
-
-
+MODEL_RUNS = 10 # default: 10
   
 
 
@@ -216,16 +243,14 @@ corr.data = data.frame(
   se.cor = numeric()
 )
 
-for (x in seq(1:MODEL_RUNS)) {
-  print(paste("######## CYCLE: ", x, " ########")) # approx. 5 mins / cycle
+
+for (x in seq(1:MODEL_RUNS)) { # takes approx. 25 mins with 10 MODEL_RUNS
+  print(paste("######## CYCLE: ", x, " ########")) # approx. 1-2 mins / cycle
   # Run models
-  data.base = run.model.baseline()
-  data.iv = run.model.individ.memories(n.memories = 10)
+  data.base = run.model.baseline(n.samples = 30)
+  data.iv = run.model.individ.memories(n.samples = 30, n.memories = 10)
   
-  # Select relevant data for subjects, base model, individual variability model
-  subj.data = data.base %>%
-    select(subject, trial, num_dots, answer)
-  
+  # Select relevant data
   model.base = data.base %>%
     mutate(answer = model.answer) %>% # align column names to match participant data
     select(subject, trial, num_dots, answer)
@@ -233,16 +258,6 @@ for (x in seq(1:MODEL_RUNS)) {
   model.iv = data.iv %>%
     mutate(answer = model.answer) %>% # align column names to match participant data
     select(subject, trial, num_dots, answer)
-  
-  ### Subject drift ###
-  # Fit slopes, NB: this can take ~10s
-  fitsBlock.subj = fit.slopes(c(BLOCKSIZE), subj.data)
-  # Get matrix of fitted slope correlations
-  cor.matrix.subj = get.cor.matrix(fitsBlock.subj)
-  # Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
-  slope.cor.df.subj = get.cor.df(cor.matrix.subj)
-  # Process slope correlations by trial distance to get mean, se across participants
-  cor.means.df.blocks.subj = get.distance.cors(slope.cor.df.subj)
   
   ### Model drift: baseline ###
   # Fit slopes, NB: this can take ~10s
@@ -252,7 +267,7 @@ for (x in seq(1:MODEL_RUNS)) {
   # Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
   slope.cor.df.model.base = get.cor.df(cor.matrix.model.base)
   # Process slope correlations by trial distance to get mean, se across participants
-  cor.means.df.blocks.model.base = get.distance.cors(slope.cor.df.model.base)
+  cor.means.df.blocks.model.base = get.distance.cors(slope.cor.df.model.base, c(BLOCKSIZE))
   
   
   ### Model drift: individual variability ###
@@ -263,18 +278,9 @@ for (x in seq(1:MODEL_RUNS)) {
   # Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
   slope.cor.df.model.iv = get.cor.df(cor.matrix.model.iv)
   # Process slope correlations by trial distance to get mean, se across participants
-  cor.means.df.blocks.model.iv = get.distance.cors(slope.cor.df.model.iv)
+  cor.means.df.blocks.model.iv = get.distance.cors(slope.cor.df.model.iv, c(BLOCKSIZE))
   
-  
-  # Aggregate data from above
-  corr.data = rbind(corr.data, data.frame(
-    source = "subjects",
-    model.run = x,
-    trial.dist = cor.means.df.blocks.subj$trial.dist,
-    mean.cor = cor.means.df.blocks.subj$mean.cor,
-    se.cor = cor.means.df.blocks.subj$se.cor
-  ))
-  
+  # Add drift data from this run to correlation data frame
   corr.data = rbind(corr.data, data.frame(
     source = "model.base",
     model.run = x,
@@ -294,58 +300,154 @@ for (x in seq(1:MODEL_RUNS)) {
 }
 
 
-
+# Summarize model runs above
 corr.data.summary = corr.data %>%
   group_by(source, trial.dist) %>%
   summarize(corr.mean = mean(mean.cor),
-            corr.min = min(mean.cor),
-            corr.max = max(mean.cor))
-
-plot.drift.ribbon(corr.data.summary)
-
+            n.obs = n(),
+            corr.min = corr.mean - sd(mean.cor),
+            corr.max = corr.mean + sd(mean.cor))
 
 
+# Run subject analysis
+subj.data = run.model.baseline(n.samples = 30)
+subj.data = subj.data %>%
+  select(subject, trial, num_dots, answer)
 
-plot.drift.composite(cor.means.df.blocks.subj,
-                     cor.means.df.blocks.model.base,
-                     cor.means.df.blocks.model.iv)
-
-
-#############
-### PLOTS ###
-#############
-
-# Plot individual estimates by subjects, models
-est.plot.subj = plot.all.subjects(subj.data)
-est.plot.model.base = plot.all.subjects(model.base)
-est.plot.model.iv = plot.all.subjects(model.iv)
-
-# Plot correlation matrix for subject estimates, models
-matrix.subj = plot.corr.matrix(slope.cor.df.subj)
-matrix.model.base = plot.corr.matrix(slope.cor.df.model.base)
-matrix.model.iv = plot.corr.matrix(slope.cor.df.model.iv)
+### Subject drift ###
+# Fit slopes, NB: this can take ~10s
+fitsBlock.subj = fit.slopes(c(BLOCKSIZE), subj.data)
+# Get matrix of fitted slope correlations
+cor.matrix.subj = get.cor.matrix(fitsBlock.subj)
+# Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
+slope.cor.df.subj = get.cor.df(cor.matrix.subj)
+# Process slope correlations by trial distance to get mean, se across participants
+cor.means.df.blocks.subj = get.distance.cors(slope.cor.df.subj, c(BLOCKSIZE))
 
 
-# Plot drift over trial distance *individually* for subject estimates, models
-drift.plot.subj = plot.drift.single(cor.means.df.blocks.subj)
-drift.plot.model.base = plot.drift.single(cor.means.df.blocks.model.base)
-drift.plot.model.iv = plot.drift.single(cor.means.df.blocks.model.iv)
-
-# Plot drift for human subjects alongside model runs
-drift.plot.composite = plot.drift.composite(cor.means.df.blocks.subj,
-                                            cor.means.df.blocks.model.base,
-                                            cor.means.df.blocks.model.iv)
-
-
-# Display plots: subjects 
-# NB: can print any of the plots above for model runs as well
-est.plot.subj
-matrix.subj
-drift.plot.subj
-drift.plot.composite
+# Add subject data to summary
+corr.data.summary = as.data.frame(corr.data.summary)
+corr.data.summary = rbind(corr.data.summary, data.frame(
+  source = "subjects",
+  trial.dist = cor.means.df.blocks.subj$trial.dist,
+  corr.mean = cor.means.df.blocks.subj$mean.cor,
+  n.obs = NA,
+  corr.min = cor.means.df.blocks.subj$mean.cor - cor.means.df.blocks.subj$se.cor,
+  corr.max = cor.means.df.blocks.subj$mean.cor + cor.means.df.blocks.subj$se.cor
+))
 
 
+# Plot results
+plot.drift.ribbon(corr.data.summary %>% filter(source != "model.base"))
+
+
+# Save data
 if (save.data) {
-  save(cor.means.df.blocks.subj, cor.means.df.blocks.model.base, cor.means.df.blocks.model.iv,
-       file = 'samples_model-drift.RData')
+  save(corr.data, corr.data.summary,
+       file = DATA_FILE)
 }
+
+
+
+###########################
+### ANALYSIS: BLOCKSIZE ###
+###########################
+
+# modification of block size here overrides global value of 30 in `samples_model-fxns_drift.R`
+blocksize.tests = c(3, 5, 10, 20, 30)
+
+
+# Run subject analysis
+subj.data = run.model.baseline()
+subj.data = subj.data %>%
+  select(subject, trial, num_dots, answer)
+
+
+agg.corr.data = data.frame()
+
+for (blocksize in blocksize.tests) { # Takes approx. 45 mins. with all blocksizes above (~10 mins per blocksize)
+  BLOCKSIZE = c(blocksize)
+  print(paste("######## RUNNING FOR BLOCKSIZE: ", BLOCKSIZE, " ########"))
+  
+  corr.data = data.frame(
+    source = character(),
+    model.run = numeric(),
+    trial.dist = numeric(),
+    mean.cor = numeric(),
+    se.cor = numeric()
+  )
+  
+  for (x in seq(1:MODEL_RUNS)) {
+    print(paste("######## CYCLE: ", x, " ########")) # approx. 1-2 mins / cycle
+    # Run model
+    data.iv = run.model.individ.memories(n.memories = 10)
+    
+    model.iv = data.iv %>%
+      mutate(answer = model.answer) %>% # align column names to match participant data
+      select(subject, trial, num_dots, answer)
+    
+    ### Model drift: individual variability ###
+    # Fit slopes, NB: this can take ~10s
+    fitsBlock.model.iv = fit.slopes(c(BLOCKSIZE), model.iv)
+    # Get matrix of fitted slope correlations
+    cor.matrix.model.iv = get.cor.matrix(fitsBlock.model.iv)
+    # Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
+    slope.cor.df.model.iv = get.cor.df(cor.matrix.model.iv)
+    # Process slope correlations by trial distance to get mean, se across participants
+    cor.means.df.blocks.model.iv = get.distance.cors(slope.cor.df.model.iv, c(BLOCKSIZE))
+    
+    corr.data = rbind(corr.data, data.frame(
+      source = "model.iv",
+      model.run = x,
+      trial.dist = cor.means.df.blocks.model.iv$trial.dist,
+      mean.cor = cor.means.df.blocks.model.iv$mean.cor,
+      se.cor = cor.means.df.blocks.model.iv$se.cor
+    ))
+  }
+  
+  # Summarize model runs above
+  corr.data.summary = corr.data %>%
+    group_by(source, trial.dist) %>%
+    summarize(corr.mean = mean(mean.cor),
+              n.obs = n(),
+              corr.min = corr.mean - sd(mean.cor),
+              corr.max = corr.mean + sd(mean.cor))
+  
+  ### Subject drift ###
+  # Fit slopes, NB: this can take ~10s
+  fitsBlock.subj = fit.slopes(c(BLOCKSIZE), subj.data)
+  # Get matrix of fitted slope correlations
+  cor.matrix.subj = get.cor.matrix(fitsBlock.subj)
+  # Format correlation matrix as data frame to plot slope correlations by trial block in analysis section below
+  slope.cor.df.subj = get.cor.df(cor.matrix.subj)
+  # Process slope correlations by trial distance to get mean, se across participants
+  cor.means.df.blocks.subj = get.distance.cors(slope.cor.df.subj, c(BLOCKSIZE))
+  
+  # Add subject data to summary
+  corr.data.summary = as.data.frame(corr.data.summary)
+  corr.data.summary = rbind(corr.data.summary, data.frame(
+    source = "subjects",
+    trial.dist = cor.means.df.blocks.subj$trial.dist,
+    corr.mean = cor.means.df.blocks.subj$mean.cor,
+    n.obs = NA,
+    corr.min = cor.means.df.blocks.subj$mean.cor - cor.means.df.blocks.subj$se.cor,
+    corr.max = cor.means.df.blocks.subj$mean.cor + cor.means.df.blocks.subj$se.cor
+  ))
+  
+  
+  summary.blocksize = corr.data.summary %>%
+    mutate("blocksize" = blocksize)
+  
+  agg.corr.data = rbind(agg.corr.data, summary.blocksize)
+}
+
+
+agg.corr.data
+
+agg.corr.data %>%
+  filter(source == "model.iv") %>%
+  plot.blocksize.comparison()
+
+
+
+
